@@ -1,0 +1,308 @@
+{
+  "users": [
+    {
+      "id": "YvEv04gMEsC3qGuVw0Edz",
+      "name": "店长",
+      "phone": "13800000000",
+      "role": "owner",
+      "passwordHash": "$2a$10$waa78syje2Y0m7wPf.wBnO3jO2keFhQfJr5vEmBgNevlmDtkoCSUe",
+      "status": "active"
+    },
+    {
+      "id": "kxpURBy4yRAhOhkqGRKcB",
+      "name": "店员",
+      "phone": "13900000000",
+      "role": "staff",
+      "passwordHash": "$2a$10$/ZIglnT.D3OIj3Mg497rne9den8UKglR7d0TTqneANOfRbCjSXt3G",
+      "status": "active"
+    }
+  ],
+  "materials": [
+    {
+      "id": "XhizJcwEF8ciczD54AALv",
+      "name": "黑发粉",
+      "unit": "g",
+      "stock": 0,
+      "threshold": 5000
+    },
+    {
+      "id": "fIqlhjkt_oem1ByaXlA3G",
+      "name": "营养粉",
+      "unit": "g",
+      "stock": 0,
+      "threshold": 5000
+    },
+    {
+      "id": "pt-4sMPaWxHHGl6hDQSq7",
+      "name": "生发粉",
+      "unit": "g",
+      "stock": 0,
+      "threshold": 5000
+    },
+    {
+      "id": "gL7mmrq7PTZC_sVRzHbZU",
+      "name": "防脱粉",
+      "unit": "g",
+      "stock": 0,
+      "threshold": 5000
+    },
+    {
+      "id": "Pkps_zOnquQELHPcZnqz6",
+      "name": "消炎粉",
+      "unit": "g",
+      "stock": 10000,
+      "threshold": 5000
+    }
+  ],
+  "products": [
+    {
+      "id": "kdAr2ru9YrmVXmqCRAiMw",
+      "name": "黑发药包",
+      "priceBase": 120,
+      "recipe": [
+        {
+          "materialId": "XhizJcwEF8ciczD54AALv",
+          "grams": 60
+        },
+        {
+          "materialId": "fIqlhjkt_oem1ByaXlA3G",
+          "grams": 15
+        }
+      ]
+    },
+    {
+      "id": "M_fxvmd955i1NolbTVPwp",
+      "name": "生发药包",
+      "priceBase": 120,
+      "recipe": [
+        {
+          "materialId": "XhizJcwEF8ciczD54AALv",
+          "grams": 30
+        },
+        {
+          "materialId": "pt-4sMPaWxHHGl6hDQSq7",
+          "grams": 30
+        },
+        {
+          "materialId": "fIqlhjkt_oem1ByaXlA3G",
+          "grams": 15
+        }
+      ]
+    },
+    {
+      "id": "8qyneMmah2t4VjFwu4fX5",
+      "name": "防脱药包",
+      "priceBase": 120,
+      "recipe": [
+        {
+          "materialId": "XhizJcwEF8ciczD54AALv",
+          "grams": 30
+        },
+        {
+          "materialId": "gL7mmrq7PTZC_sVRzHbZU",
+          "grams": 30
+        },
+        {
+          "materialId": "fIqlhjkt_oem1ByaXlA3G",
+          "grams": 15
+        }
+      ]
+    },
+    {
+      "id": "17DNzd8UT1Hd4gXS5coGs",
+      "name": "消炎药包",
+      "priceBase": 120,
+      "recipe": [
+        {
+          "materialId": "XhizJcwEF8ciczD54AALv",
+          "grams": 30
+        },
+        {
+          "materialId": "Pkps_zOnquQELHPcZnqz6",
+          "grams": 30
+        },
+        {
+          "materialId": "fIqlhjkt_oem1ByaXlA3G",
+          "grams": 15
+        }
+      ]
+    }
+  ],
+  "orders": [
+    {
+      "id": "p8CTz4OND1p--h08GY4BQ",
+      "type": "vip",
+      "productId": "kdAr2ru9YrmVXmqCRAiMw",
+      "qty": 1,
+      "person": "王小姐",
+      "receivable": 96,
+      "payment": "cash",
+      "createdAt": "2025-10-08T07:47:34.802Z"
+    },
+    {
+      "id": "rdq3M4KMEAyGY6YxoJD98",
+      "type": "vip",
+      "productId": "kdAr2ru9YrmVXmqCRAiMw",
+      "qty": 3,
+      "person": "张三",
+      "receivable": 288,
+      "payment": "wechat",
+      "createdAt": "2025-10-11T17:35:47.010Z"
+    }
+  ],
+  "purchases": [
+    {
+      "id": "ZmlIT1rdwacm98QofBkJs",
+      "materialId": "Pkps_zOnquQELHPcZnqz6",
+      "grams": 10000,
+      "cost": 0,
+      "operator": "刘唱",
+      "createdAt": "2025-10-13T02:42:01.188Z"
+    }
+  ],
+  "inventoryLogs": [
+    {
+      "id": "9FY1J91YIYqeLVZi2RvfG",
+      "kind": "out",
+      "materialId": "XhizJcwEF8ciczD54AALv",
+      "grams": 60,
+      "refType": "order",
+      "refId": "p8CTz4OND1p--h08GY4BQ",
+      "createdAt": "2025-10-08T07:47:34.802Z"
+    },
+    {
+      "id": "29i-mWAgfCKs7IxSH34zK",
+      "kind": "out",
+      "materialId": "fIqlhjkt_oem1ByaXlA3G",
+      "grams": 15,
+      "refType": "order",
+      "refId": "p8CTz4OND1p--h08GY4BQ",
+      "createdAt": "2025-10-08T07:47:34.802Z"
+    },
+    {
+      "id": "XPAaMrkKhQ98rNrSb03SO",
+      "kind": "out",
+      "materialId": "XhizJcwEF8ciczD54AALv",
+      "grams": 180,
+      "refType": "order",
+      "refId": "rdq3M4KMEAyGY6YxoJD98",
+      "createdAt": "2025-10-11T17:35:47.010Z"
+    },
+    {
+      "id": "aSiSYML_8trUT-x1m3V32",
+      "kind": "out",
+      "materialId": "fIqlhjkt_oem1ByaXlA3G",
+      "grams": 45,
+      "refType": "order",
+      "refId": "rdq3M4KMEAyGY6YxoJD98",
+      "createdAt": "2025-10-11T17:35:47.010Z"
+    },
+    {
+      "id": "X-ksQm3jsdEHUfMoB5myP",
+      "kind": "in",
+      "materialId": "Pkps_zOnquQELHPcZnqz6",
+      "grams": 10000,
+      "refType": "purchase",
+      "refId": "ZmlIT1rdwacm98QofBkJs",
+      "createdAt": "2025-10-13T02:42:01.189Z"
+    }
+  ],
+  "pricing": {
+    "self": 1,
+    "vip": 0.8,
+    "distrib": 0.7,
+    "event": 1,
+    "plans": [
+      {
+        "id": "4noDeCuu84UWdcWXSmqmM",
+        "group": "distrib",
+        "name": "分销一",
+        "setPrice": 14280,
+        "packCount": 45,
+        "perPackPrice": 317,
+        "remark": "分销首次拿货3个15次疗程套装；按零售价7折"
+      },
+      {
+        "id": "-dImcknLEX66_WRbgQF41",
+        "group": "distrib",
+        "name": "分销二",
+        "setPrice": 20400,
+        "packCount": 75,
+        "perPackPrice": 272,
+        "remark": "拿货5个15次疗程套装；按零售价6折"
+      },
+      {
+        "id": "c8IP_J0Kb9h3ZoMYyOCgA",
+        "group": "distrib",
+        "name": "分销三",
+        "setPrice": 102000,
+        "packCount": 450,
+        "perPackPrice": 227,
+        "remark": "拿货30个15次疗程套装；按零售价5折"
+      },
+      {
+        "id": "5YjWMW9niFdT2vlnzIMQa",
+        "group": "retail",
+        "name": "VIP",
+        "setPrice": 2000,
+        "packCount": 15,
+        "perPackPrice": 133,
+        "remark": "亲朋体验15次疗程套装2000元15包"
+      },
+      {
+        "id": "W-YjrqaE3VJg-mxSmTsSG",
+        "group": "retail",
+        "name": "零售一",
+        "setPrice": 6800,
+        "packCount": 15,
+        "perPackPrice": 453,
+        "remark": "零售15次疗程套装6800元15包"
+      },
+      {
+        "id": "UX2XQH1NvwqzMnlUcC-vg",
+        "group": "retail",
+        "name": "零售二",
+        "setPrice": 12300,
+        "packCount": 30,
+        "perPackPrice": 410,
+        "remark": "零售30次疗程套装12300元30包"
+      },
+      {
+        "id": "7dwZZ58VhpXi9eatqj6-l",
+        "group": "temp",
+        "name": "临时活动一",
+        "setPrice": 999,
+        "packCount": 3,
+        "perPackPrice": 333,
+        "remark": "开业活动999元3次疗程"
+      },
+      {
+        "id": "Xx2flSyJhTUbZmASIqxw2",
+        "group": "temp",
+        "name": "临时活动二",
+        "setPrice": 5780,
+        "packCount": 15,
+        "perPackPrice": 385,
+        "remark": "好友推荐8.5折（小程序登记推荐人）"
+      },
+      {
+        "id": "KvdQbm9I846LaIQfI4SZg",
+        "group": "temp",
+        "name": "临时活动三",
+        "setPrice": 1088,
+        "packCount": 3,
+        "perPackPrice": 363,
+        "remark": "3次体验8折优惠券"
+      },
+      {
+        "id": "3eFKRC2dDowiz_BOSzzRi",
+        "group": "temp",
+        "name": "一次性活动",
+        "setPrice": 0,
+        "packCount": 15,
+        "perPackPrice": 0,
+        "remark": "三位被试15次疗程免费"
+      }
+    ]
+  }
+}

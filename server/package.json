@@ -1,0 +1,63 @@
+{
+  "name": "qingsiyuan-server",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "lint": "eslint 'src/**/*.{ts,js}'",
+    "format": "prettier --write .",
+    "prepare": "husky install"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "nanoid": "^4.0.2",
+    "dotenv": "^16.4.5",
+    "winston": "^3.13.0",
+    "exceljs": "^4.4.0"
+  },
+  "devDependencies": {
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.4.5",
+    "eslint": "^9.13.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "@typescript-eslint/eslint-plugin": "^8.11.0",
+    "@typescript-eslint/parser": "^8.11.0",
+    "prettier": "^3.3.3",
+    "husky": "^9.1.6",
+    "lint-staged": "^15.2.10"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,js,json,md}": [
+      "eslint --fix",
+      "prettier --write"
+    ]
+  },
+  "eslintConfig": {
+    "root": true,
+    "env": { "node": true, "es2022": true },
+    "parser": "@typescript-eslint/parser",
+    "parserOptions": { "sourceType": "module", "ecmaVersion": 2022 },
+    "plugins": ["@typescript-eslint", "import"],
+    "extends": [
+      "eslint:recommended",
+      "plugin:@typescript-eslint/recommended",
+      "prettier"
+    ],
+    "rules": {
+      "no-console": ["warn", { "allow": ["warn", "error"] }]
+    }
+  },
+  "prettier": {
+    "singleQuote": true,
+    "semi": true,
+    "printWidth": 100,
+    "trailingComma": "all"
+  }
+}

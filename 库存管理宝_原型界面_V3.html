@@ -1,0 +1,759 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>青丝源进销存助手 - 移动端设计方案</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap');
+      * { 
+        font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "HarmonyOS Sans", "PingFang SC", sans-serif;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background-color: #f0f2f5;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        padding: 35px;
+        gap: 35px;
+      }
+      .app-container {
+        width: 375px;
+        height: 812px;
+        display: flex;
+        flex-direction: column;
+        background-color: #F9F9F9;
+        border-radius: 16px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+        overflow: hidden;
+      }
+      .fixed-section {
+        flex-shrink: 0;
+        background-color: white;
+      }
+      .content-flex {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 16px 0;
+        background-color: #F9F9F9;
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      .content-flex::-webkit-scrollbar {
+        display: none;
+      }
+      .card {
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        padding: 16px;
+        margin: 0 auto 16px;
+        width: 90%;
+      }
+      .main-btn {
+        background-color: #4CAF50;
+        color: white;
+        border-radius: 12px;
+        font-size: 18px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 50px;
+      }
+      .input-field {
+        background-color: white;
+        border: 1px solid #EEEEEE;
+        border-radius: 8px;
+        padding: 0 16px;
+        height: 50px;
+        font-size: 16px;
+        color: #999999;
+      }
+      .input-field:focus {
+        outline: none;
+        border: 2px solid #4CAF50;
+        font-size: 18px;
+        height: 55px;
+        color: #333333;
+        background-color: white;
+      }
+      .warn-text { color: #F44336; }
+      .success-text { color: #4CAF50; }
+      .nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        padding: 8px 0;
+      }
+      .nav-item.active { color: #4CAF50; }
+      .nav-item.inactive { color: #999999; }
+      .step-container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 20px;
+        position: relative;
+      }
+      .step-indicator {
+        position: absolute;
+        height: 2px;
+        background-color: #EEEEEE;
+        top: 26px;
+        left: 80px;
+        right: 80px;
+        z-index: 0;
+      }
+      .step-item {
+        font-size: 14px;
+        padding: 4px 0;
+        z-index: 1;
+        background-color: white;
+      }
+      .step-active { color: #4CAF50; font-weight: 500; }
+      .step-inactive { color: #999999; }
+      .product-card {
+        position: relative;
+        padding-right: 40px;
+      }
+      .edit-icon {
+        position: absolute;
+        right: 16px;
+        top: 22px;
+      }
+      .chart-container {
+        width: 90%;
+        height: 200px;
+        margin: 16px auto;
+      }
+      .filter-btn {
+        height: 40px;
+        padding: 0 16px;
+        border-radius: 8px;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .tab-active {
+        background-color: #4CAF50;
+        color: white;
+      }
+      .tab-inactive {
+        background-color: white;
+        color: #666666;
+        border: 1px solid #EEEEEE;
+      }
+      .notification {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        background-color: #4CAF50;
+        color: white;
+        padding: 16px;
+        display: flex;
+        align-items: center;
+        z-index: 100;
+        animation: fadeOut 3s forwards;
+      }
+      @keyframes fadeOut {
+        0% { opacity: 1; }
+        70% { opacity: 1; }
+        100% { opacity: 0; visibility: hidden; }
+      }
+    </style>
+</head>
+<body>
+  
+  <!-- 首页 -->
+  <div class="app-container">
+    <div class="fixed-section" style="height: 50px; border-bottom: 1px solid #EEEEEE; display: flex; justify-content: center; align-items: center;">
+      <h1 style="font-size: 18px; font-weight: bold; color: #333333;">青丝源进销存助手</h1>
+    </div>
+    
+    <div class="content-flex">
+      <div class="card" style="height: 80px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 16px; color: #666666;">今日取货统计</span>
+        <span style="font-size: 20px; font-weight: bold; color: #333333;">0单</span>
+      </div>
+      
+      <div class="card" style="height: 80px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 16px; color: #666666;">库存预警提示</span>
+        <span id="stock-warning" class="success-text" style="font-size: 16px; font-weight: 500;">暂无预警</span>
+      </div>
+      
+      <div style="width: 90%; display: flex; justify-content: space-between; margin: 24px auto;">
+        <button class="main-btn" style="width: 45%;">进货录入</button>
+        <button class="main-btn" style="width: 45%;">取货登记</button>
+      </div>
+    </div>
+    
+    <div class="fixed-section" style="height: 55px; display: flex; justify-content: space-around; border-top: 1px solid #EEEEEE; background-color: white;">
+      <div class="nav-item active">
+        <span class="iconify" data-icon="mdi:home" style="font-size: 24px;"></span>
+        <span style="margin-top: 4px;">首页</span>
+      </div>
+      <div class="nav-item inactive">
+        <span class="iconify" data-icon="mdi:package-down" style="font-size: 24px;"></span>
+        <span style="margin-top: 4px;">进货</span>
+      </div>
+      <div class="nav-item inactive">
+        <span class="iconify" data-icon="mdi:warehouse" style="font-size: 24px;"></span>
+        <span style="margin-top: 4px;">库存</span>
+      </div>
+      <div class="nav-item inactive">
+        <span class="iconify" data-icon="mdi:package-up" style="font-size: 24px;"></span>
+        <span style="margin-top: 4px;">取货</span>
+      </div>
+      <div class="nav-item inactive">
+        <span class="iconify" data-icon="mdi:account" style="font-size: 24px;"></span>
+        <span style="margin-top: 4px;">我的</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 取货登记界面 -->
+  <div class="app-container">
+    <div class="fixed-section" style="height: 50px; display: flex; align-items: center; border-bottom: 1px solid #EEEEEE; background-color: white; padding-left: 16px;">
+      <span class="iconify" data-icon="mdi:arrow-left" style="font-size: 24px; color: #333333; margin-right: 8px;"></span>
+      <h1 style="font-size: 18px; font-weight: bold; color: #333333;">取货登记</h1>
+    </div>
+    
+    <div class="step-container">
+      <div class="step-indicator"></div>
+      <div class="step-item step-inactive" id="step-1">1.选择类型</div>
+      <div class="step-item step-inactive" id="step-2">2.选择产品</div>
+      <div class="step-item step-inactive" id="step-3">3.取货人</div>
+      <div class="step-item step-active" id="step-4">4.确认提交</div>
+    </div>
+    
+    <!-- 步骤1：选择类型 -->
+    <div class="content-flex" id="step-1-content" style="display: none;">
+      <div style="width: 90%; margin: 20px auto;">
+        <div style="font-size: 18px; font-weight: 500; color: #333333; margin-bottom: 20px;">选择取货类型</div>
+        <div class="card" style="display: flex; align-items: center; cursor: pointer; border: 2px solid transparent;">
+          <span class="iconify" data-icon="mdi:account" style="font-size: 24px; color: #4CAF50; margin-right: 16px;"></span>
+          <div style="flex: 1;">
+            <div style="font-size: 16px; font-weight: 500; color: #333333;">自用</div>
+            <div style="font-size: 14px; color: #666666;">个人使用，标准价格</div>
+          </div>
+          <span class="iconify" data-icon="mdi:check-circle" style="font-size: 24px; color: #4CAF50;"></span>
+        </div>
+        
+        <div class="card" style="display: flex; align-items: center; cursor: pointer;">
+          <span class="iconify" data-icon="mdi:crown" style="font-size: 24px; color: #FF9800; margin-right: 16px;"></span>
+          <div style="flex: 1;">
+            <div style="font-size: 16px; font-weight: 500; color: #333333;">VIP客户</div>
+            <div style="font-size: 14px; color: #666666;">享受8折优惠</div>
+          </div>
+          <span class="iconify" data-icon="mdi:circle-outline" style="font-size: 24px; color: #CCCCCC;"></span>
+        </div>
+        
+        <div class="card" style="display: flex; align-items: center; cursor: pointer;">
+          <span class="iconify" data-icon="mdi:store" style="font-size: 24px; color: #2196F3; margin-right: 16px;"></span>
+          <div style="flex: 1;">
+            <div style="font-size: 16px; font-weight: 500; color: #333333;">分销商</div>
+            <div style="font-size: 14px; color: #666666;">享受7折优惠</div>
+          </div>
+          <span class="iconify" data-icon="mdi:circle-outline" style="font-size: 24px; color: #CCCCCC;"></span>
+        </div>
+        
+        <div class="card" style="display: flex; align-items: center; cursor: pointer;">
+          <span class="iconify" data-icon="mdi:tag" style="font-size: 24px; color: #F44336; margin-right: 16px;"></span>
+          <div style="flex: 1;">
+            <div style="font-size: 16px; font-weight: 500; color: #333333;">临时活动</div>
+            <div style="font-size: 14px; color: #666666;">根据活动设置价格</div>
+          </div>
+          <span class="iconify" data-icon="mdi:circle-outline" style="font-size: 24px; color: #CCCCCC;"></span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 步骤2：选择产品 -->
+    <div class="content-flex" id="step-2-content" style="display: none;">
+      <div style="width: 90%; margin: 20px auto;">
+        <div style="font-size: 18px; font-weight: 500; color: #333333; margin-bottom: 20px;">选择产品</div>
+        
+        <div class="input-field" style="margin-bottom: 20px; display: flex; align-items: center;">
+          <span style="flex: 1; color: #999999;">搜索产品名称</span>
+          <span class="iconify" data-icon="mdi:magnify" style="font-size: 24px; color: #999999;"></span>
+        </div>
+        
+        <div class="card" style="display: flex; align-items: center; cursor: pointer; border: 2px solid #4CAF50;">
+          <div style="flex: 1;">
+            <div style="font-size: 16px; font-weight: 500; color: #333333;">黑发药包</div>
+            <div style="font-size: 14px; color: #666666;">黑发粉60g + 营养粉15g</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 16px; font-weight: 500; color: #333333;">¥120</div>
+            <span class="iconify" data-icon="mdi:check-circle" style="font-size: 24px; color: #4CAF50;"></span>
+          </div>
+        </div>
+        
+        <div class="card" style="display: flex; align-items: center; cursor: pointer;">
+          <div style="flex: 1;">
+            <div style="font-size: 16px; font-weight: 500; color: #333333;">生发药包</div>
+            <div style="font-size: 14px; color: #666666;">黑发粉30g + 生发粉30g + 营养粉15g</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 16px; font-weight: 500; color: #333333;">¥150</div>
+            <span class="iconify" data-icon="mdi:circle-outline" style="font-size: 24px; color: #CCCCCC;"></span>
+          </div>
+        </div>
+        
+        <div class="card" style="display: flex; align-items: center; cursor: pointer;">
+          <div style="flex: 1;">
+            <div style="font-size: 16px; font-weight: 500; color: #333333;">防脱发药包</div>
+            <div style="font-size: 14px; color: #666666;">黑发粉30g + 防脱发粉30g + 营养粉15g</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 16px; font-weight: 500; color: #333333;">¥160</div>
+            <span class="iconify" data-icon="mdi:circle-outline" style="font-size: 24px; color: #CCCCCC;"></span>
+          </div>
+        </div>
+        
+        <div class="card" style="display: flex; align-items: center; cursor: pointer;">
+          <div style="flex: 1;">
+            <div style="font-size: 16px; font-weight: 500; color: #333333;">消炎药包</div>
+            <div style="font-size: 14px; color: #666666;">黑发粉30g + 消炎药粉30g + 营养粉15g</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 16px; font-weight: 500; color: #333333;">¥140</div>
+            <span class="iconify" data-icon="mdi:circle-outline" style="font-size: 24px; color: #CCCCCC;"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 步骤3：取货人信息 -->
+    <div class="content-flex" id="step-3-content" style="display: none;">
+      <div style="width: 90%; margin: 20px auto;">
+        <div style="font-size: 18px; font-weight: 500; color: #333333; margin-bottom: 20px;">填写取货人信息</div>
+        
+        <div class="input-container" style="margin-bottom: 20px;">
+          <div style="font-size: 16px; color: #333333; margin-bottom: 8px;">姓名</div>
+          <input type="text" class="input-field" placeholder="请输入取货人姓名" value="王小姐">
+        </div>
+        
+        <div class="input-container" style="margin-bottom: 20px;">
+          <div style="font-size: 16px; color: #333333; margin-bottom: 8px;">电话</div>
+          <input type="tel" class="input-field" placeholder="请输入联系电话">
+        </div>
+        
+        <div class="input-container" style="margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-size: 16px; color: #333333;">备注</div>
+            <div style="font-size: 14px; color: #666666;">选填</div>
+          </div>
+          <textarea class="input-field" placeholder="请输入备注信息（选填）" style="height: 100px; padding-top: 12px;"></textarea>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 步骤4：确认提交 -->
+    <div class="content-flex" id="step-4-content">
+      <div class="card" style="margin-top: 20px;">
+        <div style="margin-bottom: 16px; border-bottom: 1px solid #EEEEEE; padding-bottom: 16px;">
+          <div style="font-size: 18px; font-weight: bold; color: #333333; margin-bottom: 4px;">订单信息</div>
+          <div style="font-size: 14px; color: #999999;">订单编号：QS25051301</div>
+        </div>
+        
+        <div style="font-size: 16px; line-height: 28px; color: #333333;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span>取货类型</span>
+            <span style="font-weight: 500;">自用</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span>产品名称</span>
+            <span style="font-weight: 500;">黑发药包</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span>取货人</span>
+            <span style="font-weight: 500;">王小姐</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span>应收费用</span>
+            <span style="font-weight: 500; color: #F44336;">¥120.00</span>
+          </div>
+          <div style="background-color: #F5F5F5; padding: 12px; border-radius: 8px; margin-top: 16px;">
+            <div style="font-weight: 500; color: #333333; margin-bottom: 8px;">库存扣减明细</div>
+            <div style="display: flex; justify-content: space-between; color: #666666;">
+              <span>黑发粉</span>
+              <span>60g</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; color: #666666;">
+              <span>营养粉</span>
+              <span>15g</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <div style="display: flex; align-items: center; margin-bottom: 8px;">
+          <span class="iconify" data-icon="mdi:cash" style="font-size: 24px; color: #4CAF50; margin-right: 8px;"></span>
+          <div style="font-size: 16px; font-weight: 500; color: #333333;">支付方式</div>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+          <div style="display: flex; align-items: center; background-color: #F5F5F5; border-radius: 8px; padding: 8px 16px; border: 2px solid #4CAF50;">
+            <span class="iconify" data-icon="mdi:cash" style="font-size: 20px; color: #666666; margin-right: 4px;"></span>
+            <span>现金</span>
+          </div>
+          <div style="display: flex; align-items: center; background-color: #F5F5F5; border-radius: 8px; padding: 8px 16px;">
+            <span class="iconify" data-icon="mdi:wechat" style="font-size: 20px; color: #666666; margin-right: 4px;"></span>
+            <span>微信</span>
+          </div>
+          <div style="display: flex; align-items: center; background-color: #F5F5F5; border-radius: 8px; padding: 8px 16px;">
+            <span class="iconify" data-icon="mdi:alipay" style="font-size: 20px; color: #666666; margin-right: 4px;"></span>
+            <span>支付宝</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="fixed-section" style="height: 60px; display: flex; align-items: center; justify-content: center; padding: 8px; background-color: white;">
+      <div style="width: 90%; display: flex; gap: 16px;">
+        <button id="prev-step" class="main-btn" style="width: 30%; background-color: white; color: #666666; border: 1px solid #EEEEEE; display: none;">上一步</button>
+        <button id="next-step" class="main-btn" style="flex: 1;">确认提交</button>
+      </div>
+    </div>
+    
+    <!-- 成功通知 -->
+    <div class="notification" id="success-notification" style="display: none;">
+      <span class="iconify" data-icon="mdi:check-circle" style="font-size: 24px; margin-right: 8px;"></span>
+      <span>取货成功！库存已更新</span>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // 取货登记步骤控制
+      const steps = ['step-1', 'step-2', 'step-3', 'step-4'];
+      let currentStep = 3; // 默认显示确认步骤
+      
+      function updateStepDisplay() {
+        // 更新步骤指示器
+        steps.forEach((step, index) => {
+          const stepElement = document.getElementById(step);
+          if (stepElement) {
+            if (index === currentStep) {
+              stepElement.classList.remove('step-inactive');
+              stepElement.classList.add('step-active');
+            } else {
+              stepElement.classList.remove('step-active');
+              stepElement.classList.add('step-inactive');
+            }
+          }
+          
+          // 更新内容区域
+          const contentElement = document.getElementById(`${step}-content`);
+          if (contentElement) {
+            if (index === currentStep) {
+              contentElement.style.display = 'block';
+            } else {
+              contentElement.style.display = 'none';
+            }
+          }
+        });
+        
+        // 更新按钮显示
+        const prevButton = document.getElementById('prev-step');
+        const nextButton = document.getElementById('next-step');
+        
+        if (prevButton && nextButton) {
+          if (currentStep > 0) {
+            prevButton.style.display = 'block';
+          } else {
+            prevButton.style.display = 'none';
+          }
+          
+          if (currentStep === steps.length - 1) {
+            nextButton.textContent = '确认提交';
+          } else {
+            nextButton.textContent = '下一步';
+          }
+        }
+      }
+      
+      // 初始化按钮点击事件
+      const prevButton = document.getElementById('prev-step');
+      const nextButton = document.getElementById('next-step');
+      
+      if (prevButton) {
+        prevButton.addEventListener('click', function() {
+          if (currentStep > 0) {
+            currentStep--;
+            updateStepDisplay();
+          }
+        });
+      }
+      
+      if (nextButton) {
+        nextButton.addEventListener('click', function() {
+          if (currentStep < steps.length - 1) {
+            currentStep++;
+            updateStepDisplay();
+          } else {
+            // 最后一步，提交
+            const notification = document.getElementById('success-notification');
+            if (notification) {
+              notification.style.display = 'flex';
+              setTimeout(function() {
+                // 模拟跳转
+                alert('提交成功！即将返回首页');
+              }, 1500);
+            }
+          }
+        });
+      }
+      
+      // 初始化选择卡片点击事件
+      document.querySelectorAll('.card[style*="cursor: pointer"]').forEach(card => {
+        card.addEventListener('click', function() {
+          // 清除同级元素的选中状态
+          const siblings = Array.from(this.parentNode.children).filter(child => 
+            child !== this && child.classList.contains('card'));
+          
+          siblings.forEach(sibling => {
+            sibling.style.border = 'none';
+            const checkIcon = sibling.querySelector('[data-icon*="check-circle"]');
+            const outlineIcon = sibling.querySelector('[data-icon*="circle-outline"]');
+            
+            if (checkIcon) {
+              checkIcon.setAttribute('data-icon', 'mdi:circle-outline');
+              checkIcon.style.color = '#CCCCCC';
+            }
+          });
+          
+          // 设置当前元素选中状态
+          this.style.border = '2px solid #4CAF50';
+          const icon = this.querySelector('[data-icon*="circle-outline"]');
+          if (icon) {
+            icon.setAttribute('data-icon', 'mdi:check-circle');
+            icon.style.color = '#4CAF50';
+          }
+        });
+      });
+      
+      // 初始化支付方式选择
+      document.querySelectorAll('[style*="align-items: center; background-color: #F5F5F5;"]').forEach(payMethod => {
+        payMethod.addEventListener('click', function() {
+          // 清除所有支付方式的选中状态
+          document.querySelectorAll('[style*="align-items: center; background-color: #F5F5F5;"]').forEach(item => {
+            item.style.border = 'none';
+          });
+          
+          // 设置当前支付方式为选中状态
+          this.style.border = '2px solid #4CAF50';
+        });
+      });
+    });
+  </script>
+
+  <!-- 库存管理界面 -->
+  <div class="app-container">
+    <div class="fixed-section" style="height: 50px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #EEEEEE; padding: 0 16px; background-color: white;">
+      <h1 style="font-size: 18px; font-weight: bold; color: #333333;">库存管理</h1>
+      <span style="font-size: 16px; color: #4CAF50; font-weight: 500;">预警设置</span>
+    </div>
+    
+    <div class="content-flex">
+      <div class="input-field" style="margin: 16px auto; display: flex; align-items: center;">
+        <span style="flex: 1; color: #999999;">搜索原料名称</span>
+        <span class="iconify" data-icon="mdi:magnify" style="font-size: 24px; color: #999999;"></span>
+      </div>
+      
+      <div class="card" style="padding: 0; overflow: hidden; margin-top: 8px;">
+        <div style="display: flex; padding: 16px; background-color: #F5F5F5; font-size: 16px; color: #666666;">
+          <div style="flex: 2;">原料名称</div>
+          <div style="flex: 1.5;">当前库存</div>
+          <div style="flex: 1;">单位</div>
+          <div style="flex: 1;">状态</div>
+        </div>
+        
+        <div style="border-top: 1px solid #EEEEEE;">
+          <div style="display: flex; padding: 16px; font-size: 16px; border-bottom: 1px solid #EEEEEE;">
+            <div style="flex: 2; color: #333333;">黑发粉</div>
+            <div style="flex: 1.5; color: #333333;">350</div>
+            <div style="flex: 1; color: #666666;">克</div>
+            <div style="flex: 1; color: #4CAF50;">正常</div>
+          </div>
+          <div style="display: flex; padding: 16px; font-size: 16px; border-bottom: 1px solid #EEEEEE;">
+            <div style="flex: 2; color: #333333;">生发粉</div>
+            <div style="flex: 1.5; color: #333333;">180</div>
+            <div style="flex: 1; color: #666666;">克</div>
+            <div style="flex: 1; color: #4CAF50;">正常</div>
+          </div>
+          <div style="display: flex; padding: 16px; font-size: 16px; border-bottom: 1px solid #EEEEEE;">
+            <div style="flex: 2; color: #333333;">营养粉</div>
+            <div style="flex: 1.5; color: #333333;">220</div>
+            <div style="flex: 1; color: #666666;">克</div>
+            <div style="flex: 1; color: #4CAF50;">正常</div>
+          </div>
+          <div style="display: flex; padding: 16px; font-size: 16px; border-bottom: 1px solid #EEEEEE;">
+            <div style="flex: 2; color: #333333;">防脱发粉</div>
+            <div style="flex: 1.5; color: #333333;">85</div>
+            <div style="flex: 1; color: #666666;">克</div>
+            <div style="flex: 1; color: #F44336;">预警</div>
+          </div>
+          <div style="display: flex; padding: 16px; font-size: 16px; border-bottom: 1px solid #EEEEEE;">
+            <div style="flex: 2; color: #333333;">消炎药粉</div>
+            <div style="flex: 1.5; color: #333333;">300</div>
+            <div style="flex: 1; color: #666666;">克</div>
+            <div style="flex: 1; color: #4CAF50;">正常</div>
+          </div>
+        </div>
+      </div>
+      
+      <div style="text-align: center; font-size: 14px; color: #666666; margin: 16px auto;">
+        点击表头可排序
+      </div>
+    </div>
+  </div>
+
+  <!-- 配方管理界面 -->
+  <div class="app-container">
+    <div class="fixed-section" style="height: 50px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #EEEEEE; padding: 0 16px; background-color: white;">
+      <h1 style="font-size: 18px; font-weight: bold; color: #333333;">产品配方管理</h1>
+      <span style="font-size: 16px; color: #4CAF50; font-weight: 500;">添加配方</span>
+    </div>
+    
+    <div class="content-flex">
+      <div class="card product-card">
+        <div style="font-size: 18px; font-weight: bold; color: #333333; margin-bottom: 8px;">黑发药包</div>
+        <div style="font-size: 16px; color: #666666;">黑发粉60g + 营养粉15g</div>
+        <span class="iconify edit-icon" data-icon="mdi:pencil-outline" style="font-size: 24px; color: #999999;"></span>
+      </div>
+      <div class="card product-card">
+        <div style="font-size: 18px; font-weight: bold; color: #333333; margin-bottom: 8px;">生发药包</div>
+        <div style="font-size: 16px; color: #666666;">黑发粉30g + 生发粉30g + 营养粉15g</div>
+        <span class="iconify edit-icon" data-icon="mdi:pencil-outline" style="font-size: 24px; color: #999999;"></span>
+      </div>
+      <div class="card product-card">
+        <div style="font-size: 18px; font-weight: bold; color: #333333; margin-bottom: 8px;">防脱发药包</div>
+        <div style="font-size: 16px; color: #666666;">黑发粉30g + 防脱发粉30g + 营养粉15g</div>
+        <span class="iconify edit-icon" data-icon="mdi:pencil-outline" style="font-size: 24px; color: #999999;"></span>
+      </div>
+      <div class="card product-card">
+        <div style="font-size: 18px; font-weight: bold; color: #333333; margin-bottom: 8px;">消炎药包</div>
+        <div style="font-size: 16px; color: #666666;">黑发粉30g + 消炎药粉30g + 营养粉15g</div>
+        <span class="iconify edit-icon" data-icon="mdi:pencil-outline" style="font-size: 24px; color: #999999;"></span>
+      </div>
+    </div>
+    
+    <div style="position: absolute; bottom: 30px; right: 30px; z-index: 10;">
+      <div style="width: 60px; height: 60px; border-radius: 50%; background-color: #4CAF50; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 8px rgba(0,0,0,0.15)">
+        <span class="iconify" data-icon="mdi:plus" style="font-size: 30px; color: white;"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 费用统计界面 -->
+  <div class="app-container">
+    <div class="fixed-section" style="height: 50px; display: flex; justify-content: center; align-items: center; border-bottom: 1px solid #EEEEEE;">
+      <h1 style="font-size: 18px; font-weight: bold; color: #333333;">费用统计</h1>
+    </div>
+    
+    <div class="content-flex">
+      <div style="display: flex; justify-content: space-between; width: 90%; margin: 20px auto;">
+        <div class="filter-btn tab-active" style="width: 30%;">日</div>
+        <div class="filter-btn tab-inactive" style="width: 30%;">周</div>
+        <div class="filter-btn tab-inactive" style="width: 30%;">月</div>
+        
+        <select class="filter-btn tab-inactive" style="width: calc(40% - 8px);">
+          <option>全部类型</option>
+          <option>自用</option>
+          <option>VIP</option>
+          <option>分销</option>
+          <option>临时活动</option>
+        </select>
+      </div>
+      
+      <div style="display: flex; justify-content: space-between; width: 90%; margin: 20px auto;">
+        <div class="card" style="width: 48%; padding: 16px;">
+          <div style="font-size: 14px; color: #666666; margin-bottom: 8px;">应收费用</div>
+          <div style="font-size: 24px; font-weight: bold; color: #333333;">¥1250.00</div>
+        </div>
+        <div class="card" style="width: 48%; padding: 16px;">
+          <div style="font-size: 14px; color: #666666; margin-bottom: 8px;">进货成本</div>
+          <div style="font-size: 24px; font-weight: bold; color: #333333;">¥800.00</div>
+        </div>
+      </div>
+      
+      <div class="chart-container" id="echarts-container"></div>
+    </div>
+  </div>
+
+  <!-- 进货录入界面 -->
+  <div class="app-container">
+    <div class="fixed-section" style="height: 50px; display: flex; align-items: center; border-bottom: 1px solid #EEEEEE; padding-left: 16px; background-color: white;">
+      <span class="iconify" data-icon="mdi:arrow-left" style="font-size: 24px; color: #333333; margin-right: 8px;"></span>
+      <h1 style="font-size: 18px; font-weight: bold; color: #333333;">原料录入</h1>
+    </div>
+    
+    <div class="content-flex">
+      <div style="width: 90%; margin: 0 auto; padding-top: 16px;">
+        <div class="input-container" style="margin-bottom: 20px;">
+          <div style="font-size: 16px; color: #333333; margin-bottom: 8px;">原料名称</div>
+          <input type="text" class="input-field" placeholder="请输入原料名称">
+        </div>
+        
+        <div class="input-container" style="margin-bottom: 20px;">
+          <div style="font-size: 16px; color: #333333; margin-bottom: 8px;">数量（克）</div>
+          <input type="number" class="input-field" placeholder="请输入数量">
+        </div>
+        
+        <div class="input-container" style="margin-bottom: 20px;">
+          <div style="font-size: 16px; color: #333333; margin-bottom: 8px;">进货费用（元）</div>
+          <input type="number" class="input-field" placeholder="请输入费用">
+        </div>
+      </div>
+    </div>
+    
+    <div class="fixed-section" style="padding: 20px; display: flex; justify-content: center;">
+      <button class="main-btn" style="width: 90%;">提交录入</button>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // 初始化ECharts图表
+      const chartDom = document.getElementById('echarts-container');
+      if (chartDom) {
+        const chart = echarts.init(chartDom);
+        const option = {
+          grid: { top: 20, right: 20, bottom: 40, left: 40 },
+          xAxis: {
+            type: 'category',
+            data: ['10/1', '10/2', '10/3', '10/4', '10/5', '10/6', '10/7'],
+            axisLabel: { fontSize: 12, color: '#666666' }
+          },
+          yAxis: {
+            type: 'value',
+            name: '金额(元)',
+            nameTextStyle: { color: '#666666', fontSize: 12 },
+            axisLine: { show: true },
+            axisLabel: { fontSize: 12, color: '#666666' }
+          },
+          tooltip: { trigger: 'axis' },
+          series: [{
+            data: [820, 932, 901, 934, 1290, 1330, 1420],
+            type: 'bar',
+            barWidth: '40%',
+            itemStyle: { color: '#4CAF50' }
+          }]
+        };
+        chart.setOption(option);
+      }
+    });
+  </script>
+
+</body></html>

@@ -1,0 +1,99 @@
+/* 主题基于参考风格：https://modao.cc/ai/share/aipmmgkbmuh843z5yx */
+:root {
+  --qs-primary: #16a34a;
+  --qs-primary-weak: #22c55e;
+  --qs-info: #3b82f6;
+  --qs-warn: #f59e0b;
+  --qs-danger: #ef4444;
+  --qs-text-strong: #111827;
+  --qs-text: #374151;
+  --qs-subtle: #6b7280;
+  --qs-surface: #ffffff;
+  --qs-surface-muted: #f7f8fa;
+  --qs-border: #e5e7eb;
+
+  --qs-radius: 8px;
+  --qs-shadow: 0 1px 4px rgba(0,0,0,.06);
+  /* 同步 Element Plus 主题主色 */
+  --el-color-primary: var(--qs-primary);
+}
+
+body { color: var(--qs-text); background: var(--qs-surface-muted); }
+.el-card { border-radius: var(--qs-radius); box-shadow: var(--qs-shadow); }
+.el-button--primary { --el-color-primary: var(--qs-primary); }
+.el-card__body { padding: 12px; }
+.el-form-item { margin-bottom: 12px; }
+.el-form-item__label { color: var(--qs-subtle); }
+.el-button--danger { --el-color-danger: var(--qs-danger); }
+.el-message { border-radius: var(--qs-radius); }
+
+/* KPI 卡片 */
+.kpi { display:flex; flex-direction:column; gap:6px; }
+.kpi .num { font-size: 22px; font-weight: 700; color: var(--qs-text-strong); }
+.kpi .num.warn { color: var(--qs-danger); }
+
+/* 页面容器密度优化 */
+.home-wrap .el-card { margin-bottom: 12px; }
+.wrap { max-width: 1280px; margin: 0 auto; }
+.wrap .top { margin-bottom: 12px; }
+.wrap .actions > * { margin-right: 8px; }
+/* 通用工具栏 */
+.wrap .top, .home-wrap .top, .toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.wrap .actions, .toolbar .actions { display:flex; align-items:center; gap:8px; }
+.wrap .actions .el-button, .toolbar .actions .el-button, .wrap .actions .el-input, .wrap .actions .el-select { height: 32px; }
+@media (min-width: 960px) {
+  .home-wrap { max-width: 1280px; }
+}
+
+/* 取货登记 - 为粘性操作条预留底部空间 */
+.out-wrap .el-card__body { padding-bottom: 72px; }
+.out-wrap .actions.sticky { z-index: 5; }
+/* 表格紧凑与表头弱底色 */
+.el-table thead th { background: var(--qs-surface-muted); color: var(--qs-text); }
+.el-table--small .el-table__cell { padding: 8px 12px; }
+.el-table .el-table__row:hover > td { background: #fafafa; }
+/* 分页右对齐 */
+.pager { display:flex; justify-content:flex-end; margin-top: 8px; }
+/* 弹窗统一 */
+.el-dialog { border-radius: var(--qs-radius); overflow:hidden; }
+.el-dialog__header { padding: 12px 16px; border-bottom: 1px solid var(--qs-border); }
+.el-dialog__title { font-weight: 600; color: var(--qs-text-strong); }
+.el-dialog__footer { padding: 10px 16px; border-top: 1px solid var(--qs-border); }
+
+/* 登录页卡片化与对齐 */
+.login-wrap { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }
+.login-card { width:100%; max-width:420px; box-shadow: var(--qs-shadow); border-radius: var(--qs-radius); }
+.login-card .title { margin: 0 0 12px; color: var(--qs-text-strong); text-align:center; }
+.login-card .hint { color: var(--qs-subtle); }
+
+/* Tag 紧凑与语义色彩 */
+.el-tag--small { line-height: 18px; height: 22px; border-radius: 4px; }
+.el-tag--success { --el-color-success: var(--qs-primary); }
+.el-tag--danger { --el-color-danger: var(--qs-danger); }
+.el-tag--info { --el-color-info: var(--qs-info); }
+
+/* 小号按钮与操作列间距 */
+.el-button--small { padding: 6px 10px; }
+.el-button + .el-button { margin-left: 6px; }
+
+/* 分页更紧凑 */
+.el-pagination { --el-pagination-button-height: 28px; }
+.el-pagination .el-pagination__sizes .el-select .el-select__wrapper { min-height: 28px; }
+
+/* 表格斑马纹（可读性）*/
+.el-table--striped .el-table__body tr.el-table__row--striped td { background: #fcfcfc; }
+
+/* 顶部与底部导航轻样式 */
+.topbar, .tabbar { background: var(--qs-surface); border-color: var(--qs-border); }
+.tabbar .el-button.is-text, .tabbar .el-button.is-plain { border: none; }
+
+/* 输入与选择控件的紧凑高度（Element Plus wrapper）*/
+.el-input__wrapper, .el-select .el-select__wrapper { min-height: 32px; padding: 2px 8px; }
+.el-button { height: 32px; }
+
+/* 首页：工具区与标题行距 */
+.home-wrap .top { display:flex; align-items:center; justify-content:space-between; margin-bottom: 12px; }
+.home-wrap .quick { display:flex; align-items:center; gap:8px; }
+.home-wrap h2 { margin: 0; color: var(--qs-text-strong); }
+
+

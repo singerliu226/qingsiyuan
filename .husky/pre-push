@@ -1,0 +1,17 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+set -e
+
+echo "[pre-push] Running type-check/build..."
+
+if [ ! -f "E2E_ACCEPTANCE.md" ]; then
+  echo "E2E_ACCEPTANCE.md 不存在，请先完成端到端验收清单。"
+  exit 1
+fi
+
+( cd server && npm run build )
+( cd frontend && npm run build )
+
+echo "[pre-push] OK"
+

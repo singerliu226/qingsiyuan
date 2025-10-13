@@ -1,0 +1,65 @@
+<template>
+  <div class="wrap">
+    <div class="top">
+      <h3>库存流水</h3>
+      <div class="actions">
+        <el-select v-model="kind" placeholder="类型" style="width:120px">
+          <el-option label="全部" value="" />
+          <el-option label="存入" value="in" />
+          <el-option label="取出" value="out" />
+        </el-select>
+        <el-date-picker v-model="range" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" />
+        <el-button @click="load">查询</el-button>
+      </div>
+    </div>
+    <el-table :data="rows" size="small">
+      <el-table-column prop="createdAt" label="时间" width="180" />
+      <el-table-column label="类型" width="80">
+        <template #default="{ row }">{{ row.kind === 'in' ? '存入' : '取出' }}</template>
+      </el-table-column>
+      <el-table-column prop="grams" label="克数" width="100" />
+      <el-table-column label="操作人">
+        <template #default="{ row }">{{ row.operator || row.person || '—' }}</template>
+      </el-table-column>
+    </el-table>
+    <div class="pager">
+      <el-pagination layout="prev, pager, next" :total="total" :current-page="page" :page-size="pageSize" @current-change="onPage" />
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { reactive, ref } from 'vue'
+import api from '../api/client'
+
+const rows = reactive<any[]>([])
+const total = ref(0)
+const page = ref(1)
+const pageSize = ref(20)
+const kind = ref('')
+const materialId = ref('')
+const range = ref<[Date, Date] | null>(null)
+
+async function load() {
+  const params:any = { page: page.value, pageSize: pageSize.value }
+  if (kind.value) params.kind = kind.value
+  if (materialId.value) params.materialId = materialId.value
+  if (range.value) { params.from = range.value[0].toISOString(); params.to = range.value[1].toISOString() }
+  const { data } = await api.get('/inventory/logs', { params })
+  total.value = data.total
+  rows.splice(0, rows.length, ...data.data)
+}
+
+function onPage(p:number) { page.value = p; load() }
+
+load()
+</script>
+
+<style scoped>
+.wrap { padding: 16px; }
+.top { display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px; gap: 8px; }
+.actions { display:flex; align-items:center; gap: 8px; }
+.pager { display:flex; justify-content:flex-end; margin-top: 8px; }
+</style>
+
+
