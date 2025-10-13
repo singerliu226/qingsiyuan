@@ -1,0 +1,44 @@
+{
+  "services": [
+    {
+      "name": "backend",
+      "type": "node",
+      "root": "server",
+      "buildCommand": "npm ci && npm run build",
+      "startCommand": "npm run start",
+      "port": 3001,
+      "env": {
+        "NODE_VERSION": "20",
+        "NODE_ENV": "production"
+      },
+      "volumes": [
+        {
+          "path": "/app/data",
+          "size": "1Gi"
+        }
+      ],
+      "healthCheck": {
+        "path": "/health",
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3
+      }
+    },
+    {
+      "name": "frontend",
+      "type": "static",
+      "root": "frontend",
+      "buildCommand": "npm ci && npm run build",
+      "outputDir": "dist",
+      "env": {
+        "NODE_VERSION": "20"
+      },
+      "rewrites": [
+        {
+          "source": "/api/(.*)",
+          "destination": "http://backend:3001/$1"
+        }
+      ]
+    }
+  ]
+}
