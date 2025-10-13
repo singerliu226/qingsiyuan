@@ -1,9 +1,58 @@
-node_modules/
-frontend/node_modules/
-server/node_modules/
-frontend/dist/
-server/dist/
-server/data/*.json
-*.env
-.env*
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 日志
+logs
+*.log
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 构建输出
+dist/
+build/
+*.local
+
+# 测试覆盖率
+coverage/
+*.lcov
+.nyc_output
+
+# 服务器数据
+server/data/
+data/
+
+# Vite
+frontend/dist/
+frontend/dist-ssr/
+
+# TypeScript
+*.tsbuildinfo
+
+# 临时文件
+*.tmp
+*.temp
+tmp/
+temp/
+
+# 进销存管理后台参考文件（不需要上传到仓库）
+进销存管理后台/
