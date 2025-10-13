@@ -1,4 +1,5 @@
 import express from 'express';
+import { join } from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
@@ -25,8 +26,20 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
 
-app.use('/', router);
-// 错误处理中间件放在路由之后
+// API 路由统一挂载到 /api，避免与前端路由冲突
+app.use('/api', router);
+
+// 生产环境静态托管前端构建产物（放置于 dist/public）
+// 注意：需在构建阶段将 ../frontend/dist 拷贝至 dist/public
+app.use(express.static(join(__dirname, 'public')));
+
+// SPA 回退：非 /api 的 GET 请求交给前端 index.html
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api')) return next();
+  res.sendFile(join(__dirname, 'public', 'index.html'));
+});
+
+// 错误处理中间件放在所有路由之后
 app.use(errorHandler);
 
 const port = process.env.PORT ? Number(process.env.PORT) : 3001;
