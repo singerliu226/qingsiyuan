@@ -8,11 +8,19 @@
       </el-select>
       <el-select v-model="type" style="width: 160px">
         <el-option label="全部类型" value="" />
-        <el-option label="自用" value="self" />
+        <el-option label="零售" value="retail" />
         <el-option label="VIP" value="vip" />
         <el-option label="分销" value="distrib" />
-        <el-option label="活动" value="event" />
+        <el-option label="临时活动" value="temp" />
       </el-select>
+      <el-select v-model="pricingGroup" placeholder="方案分组" style="width: 140px">
+        <el-option label="方案不限" value="" />
+        <el-option label="零售" value="retail" />
+        <el-option label="VIP" value="vip" />
+        <el-option label="分销" value="distrib" />
+        <el-option label="临时活动" value="temp" />
+      </el-select>
+      <el-input v-model="pricingPlanId" placeholder="方案ID（可选）" style="width: 200px" />
       <el-date-picker v-model="range" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" />
       <el-button type="primary" @click="load">查询</el-button>
       <el-button @click="exportFile('csv')">导出 CSV</el-button>
@@ -46,6 +54,8 @@ let chart: echarts.ECharts | null = null
 
 const gran = ref<'day'|'week'|'month'>('day')
 const type = ref('')
+const pricingGroup = ref('')
+const pricingPlanId = ref('')
 const range = ref<[Date, Date] | null>(null)
 const kpi = ref({ receivableTotal: 0, purchaseCost: 0, grossEstimate: 0 })
 const series = ref<Array<{date:string; receivable:number}>>([])
@@ -53,6 +63,8 @@ const series = ref<Array<{date:string; receivable:number}>>([])
 async function load() {
   const params:any = { gran: gran.value }
   if (type.value) params.type = type.value
+  if (pricingGroup.value) params.pricingGroup = pricingGroup.value
+  if (pricingPlanId.value) params.pricingPlanId = pricingPlanId.value
   if (range.value) { params.from = range.value[0].toISOString(); params.to = range.value[1].toISOString() }
   const { data } = await api.get('/reports/summary', { params })
   kpi.value = { receivableTotal: data.receivableTotal, purchaseCost: data.purchaseCost, grossEstimate: data.grossEstimate }
@@ -73,6 +85,8 @@ function render() {
 async function exportFile(fmt:'csv'|'xlsx') {
   const params:any = {}
   if (type.value) params.type = type.value
+  if (pricingGroup.value) params.pricingGroup = pricingGroup.value
+  if (pricingPlanId.value) params.pricingPlanId = pricingPlanId.value
   if (range.value) { params.from = range.value[0].toISOString(); params.to = range.value[1].toISOString() }
   params.format = fmt
   const resp = await api.get('/reports/export', { params, responseType: 'blob' })

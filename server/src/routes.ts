@@ -401,6 +401,9 @@ router.get('/reports/summary', authMiddleware, (req, res) => {
   const from = req.query.from ? new Date(String(req.query.from)) : null;
   const to = req.query.to ? new Date(String(req.query.to)) : null;
   const type = req.query.type ? String(req.query.type) as OrderType : undefined;
+  const pricingGroup = req.query.pricingGroup ? String(req.query.pricingGroup) as PricingPlanGroup | 'vip' : undefined;
+  const pricingPlanId = req.query.pricingPlanId ? String(req.query.pricingPlanId) : undefined;
+  const groupBy = req.query.groupBy ? String(req.query.groupBy) as 'type'|'pricingGroup'|'pricingPlan' : undefined;
   const gran = (req.query.gran || 'day') as 'day' | 'week' | 'month';
 
   const orders = storage.orders.filter(o => {
@@ -408,6 +411,8 @@ router.get('/reports/summary', authMiddleware, (req, res) => {
     if (from && d < from) return false;
     if (to && d > to) return false;
     if (type && o.type !== type) return false;
+    if (pricingGroup && o.pricingGroup !== pricingGroup) return false;
+    if (pricingPlanId && o.pricingPlanId !== pricingPlanId) return false;
     return true;
   });
 
@@ -439,7 +444,17 @@ router.get('/reports/summary', authMiddleware, (req, res) => {
   }
   const series = Array.from(byKey.entries()).sort(([a],[b]) => a < b ? -1 : 1).map(([date, receivable]) => ({ date, receivable }));
 
-  res.json({ receivableTotal: Number(receivableTotal.toFixed(2)), purchaseCost: Number(purchaseCost.toFixed(2)), grossEstimate: Number((receivableTotal - purchaseCost).toFixed(2)), series });
+  let byGroup: Array<{ key: string; receivable: number }> | undefined;
+  if (groupBy) {
+    const map = new Map<string, number>();
+    for (const o of orders) {
+      const k = groupBy === 'type' ? o.type : groupBy === 'pricingGroup' ? (o.pricingGroup || '') : (o.pricingPlanId || '');
+      map.set(k, (map.get(k) || 0) + o.receivable);
+    }
+    byGroup = Array.from(map.entries()).map(([key, receivable]) => ({ key, receivable: Number(receivable.toFixed(2)) }));
+  }
+
+  res.json({ receivableTotal: Number(receivableTotal.toFixed(2)), purchaseCost: Number(purchaseCost.toFixed(2)), grossEstimate: Number((receivableTotal - purchaseCost).toFixed(2)), series, byGroup });
 });
 
 // 导出 CSV/XLSX
@@ -448,16 +463,20 @@ router.get('/reports/export', authMiddleware, async (req, res) => {
   const from = req.query.from ? new Date(String(req.query.from)) : null;
   const to = req.query.to ? new Date(String(req.query.to)) : null;
   const type = req.query.type ? String(req.query.type) as OrderType : undefined;
+  const pricingGroup = req.query.pricingGroup ? String(req.query.pricingGroup) as PricingPlanGroup | 'vip' : undefined;
+  const pricingPlanId = req.query.pricingPlanId ? String(req.query.pricingPlanId) : undefined;
   const orders = storage.orders.filter(o => {
     const d = new Date(o.createdAt);
     if (from && d < from) return false;
     if (to && d > to) return false;
     if (type && o.type !== type) return false;
+    if (pricingGroup && o.pricingGroup !== pricingGroup) return false;
+    if (pricingPlanId && o.pricingPlanId !== pricingPlanId) return false;
     return true;
   });
   if (format === 'csv') {
-    const header = 'id,type,productId,qty,person,receivable,payment,createdAt\n';
-    const rows = orders.map(o => `${o.id},${o.type},${o.productId},${o.qty},${o.person},${o.receivable},${o.payment},${o.createdAt}`).join('\n');
+    const header = 'id,type,pricingGroup,pricingPlanId,perPackPrice,productId,qty,person,receivable,payment,createdAt\n';
+    const rows = orders.map(o => `${o.id},${o.type},${o.pricingGroup||''},${o.pricingPlanId||''},${o.perPackPrice||''},${o.productId},${o.qty},${o.person},${o.receivable},${o.payment},${o.createdAt}`).join('\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="orders.csv"');
     return res.send(header + rows);
@@ -465,8 +484,8 @@ router.get('/reports/export', authMiddleware, async (req, res) => {
     const ExcelJS = await import('exceljs');
     const wb = new (ExcelJS as any).Workbook();
     const ws = wb.addWorksheet('Orders');
-    ws.addRow(['id','type','productId','qty','person','receivable','payment','createdAt']);
-    for (const o of orders) ws.addRow([o.id,o.type,o.productId,o.qty,o.person,o.receivable,o.payment,o.createdAt]);
+    ws.addRow(['id','type','pricingGroup','pricingPlanId','perPackPrice','productId','qty','person','receivable','payment','createdAt']);
+    for (const o of orders) ws.addRow([o.id,o.type,o.pricingGroup||'',o.pricingPlanId||'',o.perPackPrice||'',o.productId,o.qty,o.person,o.receivable,o.payment,o.createdAt]);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="orders.xlsx"');
     await wb.xlsx.write(res as any);
