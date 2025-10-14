@@ -169,7 +169,7 @@ function next() { step.value = Math.min(3, step.value + 1) }
 function prev() { step.value = Math.max(0, step.value - 1) }
 
 const productName = computed(() => products.find(p => p.id === productId.value)?.name || '')
-const typeLabel = computed(() => ({ retail:'零售', vip:'VIP', distrib:'分销', temp:'临时活动' } as any)[type.value])
+const typeLabel = computed(() => ({ self:'自用', retail:'零售', vip:'VIP', distrib:'分销', temp:'临时活动' } as any)[type.value])
 const paymentLabel = computed(() => ({ cash:'现金', wechat:'微信', alipay:'支付宝', other:'其他', '':'' } as any)[payment.value])
 const receivable = ref(0)
 const pricingGroup = computed(() => {
