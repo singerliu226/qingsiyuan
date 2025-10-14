@@ -22,7 +22,7 @@
           </el-form-item>
           <template v-if="type==='self' || type==='vip' || type==='distrib' || type==='retail' || type==='temp'">
             <el-form-item label="方案">
-              <el-select v-model="pricingPlanId" placeholder="选择定价方案" @change="refreshQuote">
+              <el-select v-model="pricingPlanId" placeholder="选择定价方案" @change="refreshQuote" @visible-change="onPlanDropdown">
                 <el-option v-for="pl in plansByType" :key="pl.id" :label="planLabel(pl)" :value="pl.id" />
               </el-select>
             </el-form-item>
@@ -116,14 +116,19 @@ async function loadProducts() {
   try {
     const { data } = await api.get('/products')
     products.splice(0, products.length, ...data)
-    // 方案列表（任何登录用户可取）
-    const res = await api.get('/pricing/plans')
-    plans.value = Array.isArray(res.data?.plans) ? res.data.plans : []
+    await loadPlans()
   } catch (e:any) {
     ElMessage.error(e?.response?.data?.error?.message || e.message || '加载产品失败')
   } finally {
     loadingList.value = false
   }
+}
+
+async function loadPlans() {
+  try {
+    const res = await api.get('/pricing/plans')
+    plans.value = Array.isArray(res.data?.plans) ? res.data.plans : []
+  } catch {}
 }
 
 async function submit() {
@@ -177,7 +182,8 @@ const pricingGroup = computed(() => {
 })
 const plansByType = computed(() => plans.value.filter(p => p.group === pricingGroup.value))
 function planLabel(pl:any){ return `${pl.name}（¥${pl.setPrice}/${pl.packCount}包，¥${pl.perPackPrice}/包）` }
-function onTypeChange(){ pricingPlanId.value=''; refreshQuote() }
+function onTypeChange(){ pricingPlanId.value=''; loadPlans(); refreshQuote() }
+function onPlanDropdown(open:boolean){ if (open) loadPlans() }
 
 async function refreshQuote() {
   receivable.value = 0
