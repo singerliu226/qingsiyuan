@@ -302,7 +302,7 @@ router.post('/orders', authMiddleware, (req, res) => {
   }
 
   // Compute receivable: 优先使用定价方案的应收每包
-  const perPackFromPlan = resolvePerPackPrice((pricingGroup as any) || (t === 'vip' ? 'vip' : t === 'distrib' ? 'distrib' : t === 'retail' ? 'retail' : t === 'temp' ? 'temp' : undefined), pricingPlanId);
+  const perPackFromPlan = resolvePerPackPrice((pricingGroup as any) || (t === 'vip' ? 'vip' : t === 'distrib' ? 'distrib' : t === 'retail' ? 'retail' : t === 'temp' ? 'temp' : t === 'self' ? 'self' : undefined), pricingPlanId);
   const unit = perPackFromPlan !== undefined ? perPackFromPlan : Number((product.priceBase * discountFor(t)).toFixed(2));
   const receivable = Number((unit * q).toFixed(2));
 
@@ -390,7 +390,7 @@ router.post('/orders/validate', authMiddleware, (req, res) => {
     if (mat.stock < need) lacks.push({ materialId: mat.id, need, stock: mat.stock });
   }
   if (lacks.length) return res.status(400).json(Errors.insufficient(lacks));
-  const perPackFromPlan = resolvePerPackPrice((pricingGroup as any) || (t === 'vip' ? 'vip' : t === 'distrib' ? 'distrib' : t === 'retail' ? 'retail' : t === 'temp' ? 'temp' : undefined), pricingPlanId);
+  const perPackFromPlan = resolvePerPackPrice((pricingGroup as any) || (t === 'vip' ? 'vip' : t === 'distrib' ? 'distrib' : t === 'retail' ? 'retail' : t === 'temp' ? 'temp' : t === 'self' ? 'self' : undefined), pricingPlanId);
   const unit = perPackFromPlan !== undefined ? perPackFromPlan : Number((product.priceBase * discountFor(t)).toFixed(2));
   const receivable = Number((unit * q).toFixed(2));
   return res.json({ receivable, perPackPrice: unit });

@@ -24,6 +24,9 @@ const defaultDb: DbShape = {
   purchases: [],
   inventoryLogs: [],
   pricing: { self: 1, vip: 0.8, distrib: 0.7, event: 1, plans: [
+    // 自用（固定每包 80 元，按 15/30 次打包示例）
+    { id: 'plan-self-15', group: 'self', name: '自用15次', setPrice: 1200, packCount: 15, perPackPrice: 80, remark: '自用固定¥80/包' },
+    { id: 'plan-self-30', group: 'self', name: '自用30次', setPrice: 2400, packCount: 30, perPackPrice: 80, remark: '自用固定¥80/包' },
     // 分销（三档）
     { id: 'plan-distrib-1', group: 'distrib', name: '分销一', setPrice: 14280, packCount: 45, perPackPrice: 317, remark: '首次拿货3×15次疗程套装' },
     { id: 'plan-distrib-2', group: 'distrib', name: '分销二', setPrice: 20400, packCount: 75, perPackPrice: 272, remark: '拿货5×15次疗程套装' },

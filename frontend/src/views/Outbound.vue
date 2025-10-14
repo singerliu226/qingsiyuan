@@ -13,13 +13,14 @@
         <el-form label-width="80px">
           <el-form-item label="类型">
             <el-select v-model="type" placeholder="选择取货类型" @change="onTypeChange">
+              <el-option label="自用" value="self" />
               <el-option label="零售" value="retail" />
               <el-option label="VIP" value="vip" />
               <el-option label="分销" value="distrib" />
               <el-option label="临时活动" value="temp" />
             </el-select>
           </el-form-item>
-          <template v-if="type==='vip' || type==='distrib' || type==='retail' || type==='temp'">
+          <template v-if="type==='self' || type==='vip' || type==='distrib' || type==='retail' || type==='temp'">
             <el-form-item label="方案">
               <el-select v-model="pricingPlanId" placeholder="选择定价方案" @change="refreshQuote">
                 <el-option v-for="pl in plansByType" :key="pl.id" :label="planLabel(pl)" :value="pl.id" />
@@ -101,7 +102,7 @@ const products = reactive<any[]>([])
 const loadingList = ref(false)
 const productId = ref('')
 const qty = ref(1)
-const type = ref<'retail'|'vip'|'distrib'|'temp'>('retail')
+const type = ref<'self'|'retail'|'vip'|'distrib'|'temp'>('self')
 const person = ref('')
 const loading = ref(false)
 const step = ref(0)
@@ -167,6 +168,7 @@ const typeLabel = computed(() => ({ retail:'零售', vip:'VIP', distrib:'分销'
 const paymentLabel = computed(() => ({ cash:'现金', wechat:'微信', alipay:'支付宝', other:'其他', '':'' } as any)[payment.value])
 const receivable = ref(0)
 const pricingGroup = computed(() => {
+  if (type.value === 'self') return 'self'
   if (type.value === 'vip') return 'vip'
   if (type.value === 'distrib') return 'distrib'
   if (type.value === 'retail') return 'retail'

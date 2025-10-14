@@ -18,6 +18,36 @@
       </el-form>
       <el-divider>开业活动方案</el-divider>
       <el-tabs v-model="activeTab">
+        <el-tab-pane label="自用（固定80/包）" name="self">
+          <div class="actions" style="margin-bottom:8px;">
+            <el-button size="small" @click="addPlan('self')">新增自用方案</el-button>
+          </div>
+          <el-alert type="info" show-icon title="自用方案建议按80元/包计算，可设置15/30包等固定套装" style="margin-bottom:8px;" />
+          <el-table :data="plansSelf" size="small">
+            <el-table-column prop="name" label="名称" width="120" />
+            <el-table-column label="套装价格(元)" width="150">
+              <template #default="{ row }">
+                <el-input-number v-model="row.setPrice" :min="0" :step="1" />
+              </template>
+            </el-table-column>
+            <el-table-column label="套装内包数" width="140">
+              <template #default="{ row }">
+                <el-input-number v-model="row.packCount" :min="0" :step="1" />
+              </template>
+            </el-table-column>
+            <el-table-column label="应收每包(元)" width="160">
+              <template #default="{ row }">
+                <el-input-number v-model="row.perPackPrice" :min="0" :step="1" />
+              </template>
+            </el-table-column>
+            <el-table-column prop="remark" label="备注" />
+            <el-table-column label="操作" width="120">
+              <template #default="{ $index }">
+                <el-button size="small" type="danger" @click="removePlan('self', $index)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
         <el-tab-pane label="VIP" name="vip">
           <div class="actions" style="margin-bottom:8px;">
             <el-button size="small" @click="ensureVip">{{ plansVip.length ? '重置为VIP' : '创建VIP' }}</el-button>
@@ -142,11 +172,12 @@
 import { reactive, ref, onMounted, computed } from 'vue'
 import api from '../api/client'
 
-type Plan = { id?: string; group: 'distrib'|'retail'|'temp'; name: string; setPrice: number; packCount: number; perPackPrice?: number; remark?: string }
+type Plan = { id?: string; group: 'self'|'distrib'|'retail'|'temp'|'special'; name: string; setPrice: number; packCount: number; perPackPrice?: number; remark?: string }
 const form = reactive({ self: 1, vip: 0.8, distrib: 0.7, event: 1, plans: [] as Plan[] })
 const saving = ref(false)
-const activeTab = ref('distrib')
+const activeTab = ref('self')
 
+const plansSelf = computed(() => form.plans.filter(p => p.group==='self'))
 const plansVip = computed(() => form.plans.filter(p => p.group==='special' && p.name==='VIP'))
 const plansDistrib = computed(() => form.plans.filter(p => p.group==='distrib'))
 const plansRetail = computed(() => form.plans.filter(p => p.group==='retail' && p.name!=='VIP'))
@@ -157,13 +188,13 @@ function perPack(p: Plan) {
   return n > 0 ? Math.round(Number(p.setPrice || 0) / n) : 0
 }
 
-function addPlan(group:'distrib'|'retail'|'temp') {
+function addPlan(group:'self'|'distrib'|'retail'|'temp') {
   const seq = (form.plans.filter(p => p.group===group).length + 1)
-  const name = group==='distrib' ? `分销${['一','二','三','四','五'][seq-1]||seq}` : group==='retail' ? `零售${['一','二','三','四','五'][seq-1]||seq}` : `临时活动${['一','二','三','四','五'][seq-1]||seq}`
+  const name = group==='self' ? `自用${['一','二','三','四','五'][seq-1]||seq}` : group==='distrib' ? `分销${['一','二','三','四','五'][seq-1]||seq}` : group==='retail' ? `零售${['一','二','三','四','五'][seq-1]||seq}` : `临时活动${['一','二','三','四','五'][seq-1]||seq}`
   form.plans.push({ group, name, setPrice: 0, packCount: 0, remark: '' })
 }
 
-function removePlan(group:'distrib'|'retail'|'temp', index:number) {
+function removePlan(group:'self'|'distrib'|'retail'|'temp', index:number) {
   const list = form.plans.filter(p => p.group===group)
   const target = list[index]
   if (!target) return

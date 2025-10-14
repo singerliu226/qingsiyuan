@@ -76,7 +76,7 @@ export interface PricingConfig {
   plans?: PricingPlan[];
 }
 
-export type PricingPlanGroup = 'distrib' | 'retail' | 'vip' | 'temp' | 'special';
+export type PricingPlanGroup = 'self' | 'distrib' | 'retail' | 'vip' | 'temp' | 'special';
 
 export interface PricingPlan {
   id: string;
