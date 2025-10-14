@@ -56,8 +56,11 @@ export function ensureCatalogSeed(): void {
 export function ensurePricingSeed(): void {
   const p = storage.pricing as any;
   const hasPlans = Array.isArray(p?.plans) && p.plans.length > 0;
-  if (hasPlans) return;
+  const plansExisting: PricingPlan[] = hasPlans ? (p.plans as PricingPlan[]) : [];
   const plans: PricingPlan[] = [
+    // 自用（固定每包 80 元，常见 15/30 次）
+    { id: nanoid(), group: 'self', name: '自用15次', setPrice: 1200, packCount: 15, perPackPrice: 80, remark: '自用固定¥80/包' },
+    { id: nanoid(), group: 'self', name: '自用30次', setPrice: 2400, packCount: 30, perPackPrice: 80, remark: '自用固定¥80/包' },
     // 分销（三档）
     { id: nanoid(), group: 'distrib', name: '分销一', setPrice: 14280, packCount: 45, perPackPrice: 317, remark: '分销首次拿货3个15次疗程套装；按零售价7折' },
     { id: nanoid(), group: 'distrib', name: '分销二', setPrice: 20400, packCount: 75, perPackPrice: 272, remark: '拿货5个15次疗程套装；按零售价6折' },
@@ -72,6 +75,16 @@ export function ensurePricingSeed(): void {
     { id: nanoid(), group: 'temp', name: '临时活动三', setPrice: 1088, packCount: 3, perPackPrice: 363, remark: '3次体验8折优惠券' },
     { id: nanoid(), group: 'temp', name: '一次性活动', setPrice: 0, packCount: 15, perPackPrice: 0, remark: '三位被试15次疗程免费' },
   ];
+  if (hasPlans) {
+    // 若已存在方案，仅在缺少自用分组时补齐自用两档，避免覆盖现有自定义方案
+    const hasSelf = plansExisting.some(pl => pl.group === 'self');
+    if (!hasSelf) {
+      const toAdd = plans.filter(pl => pl.group === 'self');
+      const next = { ...p, plans: [...plansExisting, ...toAdd] } as any;
+      storage.setPricing(next);
+    }
+    return;
+  }
   const next = { ...p, plans } as any;
   storage.setPricing(next);
 }

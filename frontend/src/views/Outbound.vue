@@ -180,7 +180,11 @@ const pricingGroup = computed(() => {
   if (type.value === 'temp') return 'temp'
   return undefined
 })
-const plansByType = computed(() => plans.value.filter(p => p.group === pricingGroup.value))
+const plansByType = computed(() => {
+  // 兼容历史：VIP 方案可能存于 special 或 retail:VIP 名称下，服务端已在 /pricing/plans 统一映射 group='vip'
+  const g = pricingGroup.value
+  return plans.value.filter(p => p.group === g)
+})
 function planLabel(pl:any){ return `${pl.name}（¥${pl.setPrice}/${pl.packCount}包，¥${pl.perPackPrice}/包）` }
 function onTypeChange(){ pricingPlanId.value=''; loadPlans(); refreshQuote() }
 function onPlanDropdown(open:boolean){ if (open) loadPlans() }

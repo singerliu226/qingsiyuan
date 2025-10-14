@@ -238,17 +238,30 @@ function discountFor(type: OrderType): number {
 
 // 面向前台的只读方案列表（任何登录用户可见）
 router.get('/pricing/plans', authMiddleware, (_req, res) => {
-  const plans = Array.isArray(storage.pricing.plans) ? storage.pricing.plans : [];
+  const plansRaw = Array.isArray(storage.pricing.plans) ? storage.pricing.plans : [];
+  // 兼容历史：将名称为 VIP 或分组为 special 的方案在读出时统一映射为 vip 分组，方便前端筛选
+  const plans = plansRaw.map(p => (p.name === 'VIP' || (p as any).group === 'special') ? ({ ...p, group: 'vip' as any }) : p);
   res.json({ plans });
 });
 
 function resolvePerPackPrice(group: PricingPlanGroup | 'vip' | undefined, planId: string | undefined): number | undefined {
   const plans = Array.isArray(storage.pricing.plans) ? storage.pricing.plans : [];
-  if (!group || !planId) return undefined;
-  const plan = plans.find(p => p.id === planId && p.group === group);
-  if (!plan) return undefined;
-  const price = Number(plan.perPackPrice || 0);
-  return price >= 0 ? price : undefined;
+  // 优先依据方案 ID 精确匹配，避免分组枚举差异导致无法命中（如历史数据中的 special/retail:VIP）
+  if (planId) {
+    const byId = plans.find(p => p.id === planId);
+    if (byId) {
+      const price = Number(byId.perPackPrice || 0);
+      return price >= 0 ? price : undefined;
+    }
+  }
+  if (group) {
+    const byGroup = plans.find(p => p.group === group);
+    if (byGroup) {
+      const price = Number(byGroup.perPackPrice || 0);
+      return price >= 0 ? price : undefined;
+    }
+  }
+  return undefined;
 }
 
 // ===== Purchases (Inbound) =====

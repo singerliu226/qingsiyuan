@@ -218,7 +218,8 @@ async function load() {
 async function save() {
   saving.value = true
   try {
-    const payload = { self: form.self, vip: form.vip, distrib: form.distrib, event: form.event, plans: form.plans.map(p => ({ id: p.id, group: p.group, name: p.name, setPrice: p.setPrice, packCount: p.packCount, remark: p.remark })) }
+    // 将 perPackPrice 一并提交，确保后端采用操作者手动调整后的单包价
+    const payload = { self: form.self, vip: form.vip, distrib: form.distrib, event: form.event, plans: form.plans.map(p => ({ id: p.id, group: p.group, name: p.name, setPrice: p.setPrice, packCount: p.packCount, perPackPrice: (p as any).perPackPrice, remark: p.remark })) }
     await api.patch('/pricing', payload)
     ElMessage.success('已保存')
   } finally {
