@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import { authMiddleware, requireRole, signToken } from './auth';
 import { storage, backupManager } from './storage';
-import { Material, Order, OrderType, Product, ProductRecipeItem, Purchase, PricingPlan } from './types';
+import { Material, Order, OrderType, Product, ProductRecipeItem, Purchase, PricingPlan, PricingPlanGroup } from './types';
 import { Errors } from './errors';
 import { existsSync, copyFileSync } from 'fs';
 import { join } from 'path';
@@ -229,9 +229,26 @@ function discountFor(type: OrderType): number {
     case 'self': return p.self;
     case 'vip': return p.vip;
     case 'distrib': return p.distrib;
-    case 'event': return p.event;
+    case 'retail': return 1; // 零售默认不打折
+    case 'temp': return p.event; // 临时活动沿用 event 折扣
+    case 'event': return p.event; // 兼容旧值
     default: return 1;
   }
+}
+
+// 面向前台的只读方案列表（任何登录用户可见）
+router.get('/pricing/plans', authMiddleware, (_req, res) => {
+  const plans = Array.isArray(storage.pricing.plans) ? storage.pricing.plans : [];
+  res.json({ plans });
+});
+
+function resolvePerPackPrice(group: PricingPlanGroup | 'vip' | undefined, planId: string | undefined): number | undefined {
+  const plans = Array.isArray(storage.pricing.plans) ? storage.pricing.plans : [];
+  if (!group || !planId) return undefined;
+  const plan = plans.find(p => p.id === planId && p.group === group);
+  if (!plan) return undefined;
+  const price = Number(plan.perPackPrice || 0);
+  return price >= 0 ? price : undefined;
 }
 
 // ===== Purchases (Inbound) =====
@@ -262,9 +279,9 @@ router.get('/orders', authMiddleware, (_req, res) => {
 });
 
 router.post('/orders', authMiddleware, (req, res) => {
-  const { type, productId, qty, person, payment } = req.body || {} as Partial<Order>;
-  const t = (type || 'self') as OrderType;
-  if (!['self', 'vip', 'distrib', 'event'].includes(t)) {
+  const { type, productId, qty, person, payment, pricingGroup, pricingPlanId } = req.body || {} as Partial<Order> & { pricingGroup?: PricingPlanGroup | 'vip', pricingPlanId?: string };
+  const t = (type || 'retail') as OrderType;
+  if (!['self', 'vip', 'distrib', 'retail', 'temp', 'event'].includes(t)) {
     return res.status(400).json(Errors.validation('type 非法'));
   }
   const product = storage.products.find(p => p.id === productId);
@@ -284,8 +301,10 @@ router.post('/orders', authMiddleware, (req, res) => {
     return res.status(400).json(Errors.insufficient(lacks));
   }
 
-  // Compute receivable
-  const receivable = Number((product.priceBase * discountFor(t) * q).toFixed(2));
+  // Compute receivable: 优先使用定价方案的应收每包
+  const perPackFromPlan = resolvePerPackPrice((pricingGroup as any) || (t === 'vip' ? 'vip' : t === 'distrib' ? 'distrib' : t === 'retail' ? 'retail' : t === 'temp' ? 'temp' : undefined), pricingPlanId);
+  const unit = perPackFromPlan !== undefined ? perPackFromPlan : Number((product.priceBase * discountFor(t)).toFixed(2));
+  const receivable = Number((unit * q).toFixed(2));
 
   // Deduct stock and write logs
   const orderId = nanoid();
@@ -307,6 +326,9 @@ router.post('/orders', authMiddleware, (req, res) => {
     receivable,
     payment: (payment || '') as any,
     createdAt: nowIso(),
+    pricingGroup: pricingGroup as any,
+    pricingPlanId,
+    perPackPrice: unit,
   };
   storage.addOrder(order);
   res.status(201).json({ id: order.id, receivable: order.receivable, createdAt: order.createdAt });
@@ -351,9 +373,9 @@ router.get('/products/:id/usage', authMiddleware, requireRole('owner'), (req, re
 
 // 订单预校验：返回应收与库存充足性
 router.post('/orders/validate', authMiddleware, (req, res) => {
-  const { type, productId, qty } = (req.body || {}) as Partial<Order>;
-  const t = (type || 'self') as OrderType;
-  if (!['self', 'vip', 'distrib', 'event'].includes(t)) {
+  const { type, productId, qty, pricingGroup, pricingPlanId } = (req.body || {}) as Partial<Order> & { pricingGroup?: PricingPlanGroup | 'vip', pricingPlanId?: string };
+  const t = (type || 'retail') as OrderType;
+  if (!['self', 'vip', 'distrib', 'retail', 'temp', 'event'].includes(t)) {
     return res.status(400).json(Errors.validation('type 非法'));
   }
   const product = storage.products.find(p => p.id === productId);
@@ -368,8 +390,10 @@ router.post('/orders/validate', authMiddleware, (req, res) => {
     if (mat.stock < need) lacks.push({ materialId: mat.id, need, stock: mat.stock });
   }
   if (lacks.length) return res.status(400).json(Errors.insufficient(lacks));
-  const receivable = Number((product.priceBase * discountFor(t) * q).toFixed(2));
-  return res.json({ receivable });
+  const perPackFromPlan = resolvePerPackPrice((pricingGroup as any) || (t === 'vip' ? 'vip' : t === 'distrib' ? 'distrib' : t === 'retail' ? 'retail' : t === 'temp' ? 'temp' : undefined), pricingPlanId);
+  const unit = perPackFromPlan !== undefined ? perPackFromPlan : Number((product.priceBase * discountFor(t)).toFixed(2));
+  const receivable = Number((unit * q).toFixed(2));
+  return res.json({ receivable, perPackPrice: unit });
 });
 
 // ===== Reports =====

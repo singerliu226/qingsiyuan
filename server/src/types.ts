@@ -29,7 +29,7 @@ export interface Product {
   recipe: ProductRecipeItem[];
 }
 
-export type OrderType = 'self' | 'vip' | 'distrib' | 'event';
+export type OrderType = 'self' | 'vip' | 'distrib' | 'retail' | 'temp' | 'event';
 
 export interface Order {
   id: string;
@@ -40,6 +40,10 @@ export interface Order {
   receivable: number;
   payment: 'cash' | 'wechat' | 'alipay' | 'other' | '';
   createdAt: string; // ISO
+  // 定价策略（可选，便于追溯）
+  pricingGroup?: PricingPlanGroup | 'vip';
+  pricingPlanId?: string;
+  perPackPrice?: number;
 }
 
 export type InventoryLogKind = 'in' | 'out';
@@ -72,7 +76,7 @@ export interface PricingConfig {
   plans?: PricingPlan[];
 }
 
-export type PricingPlanGroup = 'distrib' | 'retail' | 'temp' | 'special';
+export type PricingPlanGroup = 'distrib' | 'retail' | 'vip' | 'temp' | 'special';
 
 export interface PricingPlan {
   id: string;

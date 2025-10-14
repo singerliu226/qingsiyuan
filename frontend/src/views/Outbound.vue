@@ -12,13 +12,20 @@
       <div v-if="step === 0" class="pane">
         <el-form label-width="80px">
           <el-form-item label="类型">
-            <el-select v-model="type" placeholder="选择取货类型">
-              <el-option label="自用" value="self" />
+            <el-select v-model="type" placeholder="选择取货类型" @change="onTypeChange">
+              <el-option label="零售" value="retail" />
               <el-option label="VIP" value="vip" />
               <el-option label="分销" value="distrib" />
-              <el-option label="活动" value="event" />
+              <el-option label="临时活动" value="temp" />
             </el-select>
           </el-form-item>
+          <template v-if="type==='vip' || type==='distrib' || type==='retail' || type==='temp'">
+            <el-form-item label="方案">
+              <el-select v-model="pricingPlanId" placeholder="选择定价方案" @change="refreshQuote">
+                <el-option v-for="pl in plansByType" :key="pl.id" :label="planLabel(pl)" :value="pl.id" />
+              </el-select>
+            </el-form-item>
+          </template>
           <el-button type="primary" @click="next">下一步</el-button>
         </el-form>
       </div>
@@ -94,18 +101,23 @@ const products = reactive<any[]>([])
 const loadingList = ref(false)
 const productId = ref('')
 const qty = ref(1)
-const type = ref<'self'|'vip'|'distrib'|'event'>('self')
+const type = ref<'retail'|'vip'|'distrib'|'temp'>('retail')
 const person = ref('')
 const loading = ref(false)
 const step = ref(0)
 const payment = ref<'cash'|'wechat'|'alipay'|'other'|''>('')
 const dlg = reactive<{ visible:boolean; orderId:string; receivable:number; canceling:boolean }>({ visible:false, orderId:'', receivable:0, canceling:false })
+const pricingPlanId = ref<string>('')
+const plans = ref<Array<any>>([])
 
 async function loadProducts() {
   loadingList.value = true
   try {
     const { data } = await api.get('/products')
     products.splice(0, products.length, ...data)
+    // 方案列表（任何登录用户可取）
+    const res = await api.get('/pricing/plans')
+    plans.value = Array.isArray(res.data?.plans) ? res.data.plans : []
   } catch (e:any) {
     ElMessage.error(e?.response?.data?.error?.message || e.message || '加载产品失败')
   } finally {
@@ -118,7 +130,7 @@ async function submit() {
   if (!payment.value) { ElMessage.warning('请选择支付方式'); return }
   loading.value = true
   try {
-    const { data } = await api.post('/orders', { type: type.value, productId: productId.value, qty: qty.value, person: person.value, payment: payment.value })
+    const { data } = await api.post('/orders', { type: type.value, productId: productId.value, qty: qty.value, person: person.value, payment: payment.value, pricingGroup: pricingGroup.value, pricingPlanId: pricingPlanId.value })
     dlg.visible = true
     dlg.orderId = data.id
     dlg.receivable = data.receivable
@@ -151,15 +163,25 @@ function next() { step.value = Math.min(3, step.value + 1) }
 function prev() { step.value = Math.max(0, step.value - 1) }
 
 const productName = computed(() => products.find(p => p.id === productId.value)?.name || '')
-const typeLabel = computed(() => ({ self:'自用', vip:'VIP', distrib:'分销', event:'活动' } as any)[type.value])
+const typeLabel = computed(() => ({ retail:'零售', vip:'VIP', distrib:'分销', temp:'临时活动' } as any)[type.value])
 const paymentLabel = computed(() => ({ cash:'现金', wechat:'微信', alipay:'支付宝', other:'其他', '':'' } as any)[payment.value])
 const receivable = ref(0)
+const pricingGroup = computed(() => {
+  if (type.value === 'vip') return 'vip'
+  if (type.value === 'distrib') return 'distrib'
+  if (type.value === 'retail') return 'retail'
+  if (type.value === 'temp') return 'temp'
+  return undefined
+})
+const plansByType = computed(() => plans.value.filter(p => p.group === pricingGroup.value))
+function planLabel(pl:any){ return `${pl.name}（¥${pl.setPrice}/${pl.packCount}包，¥${pl.perPackPrice}/包）` }
+function onTypeChange(){ pricingPlanId.value=''; refreshQuote() }
 
 async function refreshQuote() {
   receivable.value = 0
   if (!productId.value || !qty.value) return
   try {
-    const { data } = await api.post('/orders/validate', { type: type.value, productId: productId.value, qty: qty.value })
+    const { data } = await api.post('/orders/validate', { type: type.value, productId: productId.value, qty: qty.value, pricingGroup: pricingGroup.value, pricingPlanId: pricingPlanId.value })
     receivable.value = data.receivable
   } catch (e:any) {
     receivable.value = 0
