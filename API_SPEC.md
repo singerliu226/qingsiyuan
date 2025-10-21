@@ -18,8 +18,12 @@
 
 ### 进货（Purchases）
 - GET /purchases → [{ id, materialId, grams, cost, createdAt }]
-- POST /purchases { materialId, grams, cost } → purchase
+- POST /purchases { materialId, grams, cost, operator? } → purchase
   - 写入库存：InventoryLog(kind=in)
+  
+新增：
+- POST /purchases/batch { items: [{ materialId, grams, cost?, operator? }] } → { ok, count, purchases }
+  - 批量为多种原料入库；每条均写入 InventoryLog(kind=in)，operator 默认为当前登录用户的 name。
 
 ### 订单/出库（Orders）
 - GET /orders?range=day|week|month&type=all|self|vip|distrib|event

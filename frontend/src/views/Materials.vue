@@ -36,7 +36,7 @@
           <el-table-column label="操作" width="260">
             <template #default="{ row }">
               <el-button size="small" @click="openEdit(row)">设置阈值</el-button>
-              <el-button size="small" type="primary" @click="openInbound(row)">增加库存</el-button>
+              <el-button size="small" type="primary" @click="gotoInbound(row)">增加库存</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -59,18 +59,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="inb.visible" title="增加库存（入库）" width="420px">
-      <el-form label-width="100px">
-        <el-form-item label="原料"><el-input v-model="inb.name" disabled /></el-form-item>
-        <el-form-item label="入库克数"><el-input-number v-model="inb.grams" :min="1" /></el-form-item>
-        <el-form-item label="成本(可选)"><el-input-number v-model="inb.cost" :min="0" /></el-form-item>
-        <el-form-item label="操作人"><el-input v-model="inb.operator" placeholder="本次入库操作人" /></el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="inb.visible=false">取消</el-button>
-        <el-button type="primary" :loading="inb.loading" @click="doInbound">提交</el-button>
-      </template>
-    </el-dialog>
+    
   </div>
 </template>
 
@@ -88,7 +77,8 @@ const page = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const dlg = reactive<{ visible:boolean; loading:boolean; id:string; threshold:number }>({ visible:false, loading:false, id:'', threshold:0 })
-const inb = reactive<{ visible:boolean; loading:boolean; id:string; name:string; grams:number; cost:number; operator:string }>({ visible:false, loading:false, id:'', name:'', grams:0, cost:0, operator:'' })
+import { useRouter } from 'vue-router'
+const router = useRouter()
 
 async function load() {
   loading.value = true
@@ -125,9 +115,7 @@ function openEdit(row:any) {
   dlg.threshold = row.threshold || 0
 }
 
-function openInbound(row:any) {
-  Object.assign(inb, { visible:true, loading:false, id: row.id, name: row.name, grams: 0, cost: 0, operator: '' })
-}
+function gotoInbound(row:any) { router.push({ path: '/purchases', query: { materialId: row.id } }) }
 
 async function save() {
   dlg.loading = true
@@ -140,18 +128,7 @@ async function save() {
   }
 }
 
-async function doInbound() {
-  if (!inb.id || !inb.grams) { ElMessage.warning('请填写入库克数'); return }
-  inb.loading = true
-  try {
-    await api.post('/purchases', { materialId: inb.id, grams: inb.grams, cost: inb.cost, operator: inb.operator })
-    await load()
-    inb.visible = false
-    ElMessage.success('入库成功')
-  } finally {
-    inb.loading = false
-  }
-}
+// 入库流程已改为跳转“进货”模块
 
 load()
 </script>

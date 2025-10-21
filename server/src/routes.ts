@@ -269,6 +269,9 @@ router.get('/purchases', authMiddleware, (_req, res) => {
   res.json(storage.purchases);
 });
 
+/**
+ * 单条入库：用于简单场景或向后兼容旧前端。
+ */
 router.post('/purchases', authMiddleware, (req, res) => {
   const { materialId, grams, cost, operator } = req.body || {} as Purchase;
   const mat = storage.materials.find(m => m.id === materialId);
@@ -284,6 +287,37 @@ router.post('/purchases', authMiddleware, (req, res) => {
   storage.upsertMaterial(mat);
   storage.addInventoryLog({ id: nanoid(), kind: 'in', materialId, grams: g, refType: 'purchase', refId: purchase.id, operator: purchase.operator || user?.name || '', createdAt: nowIso() });
   res.status(201).json(purchase);
+});
+
+/**
+ * 批量入库：一次性为多种原料增加库存并记录流水。
+ * 请求体：{ items: [{ materialId, grams, cost?, operator? }] }
+ * 返回：{ ok: true, count, purchases: Purchase[] }
+ */
+/**
+ * 批量入库：请求体 items 数组逐条校验并落库，日志逐条写入，确保可追溯。
+ */
+router.post('/purchases/batch', authMiddleware, (req, res) => {
+  const body = req.body || {};
+  const items = Array.isArray(body.items) ? body.items : [];
+  if (!items.length) return res.status(400).json(Errors.validation('items 不能为空'));
+  const user = (req as any).user as { name?: string } | undefined;
+  const purchases: Purchase[] = [];
+  for (const it of items) {
+    const { materialId, grams, cost, operator } = it || {} as Purchase;
+    const mat = storage.materials.find(m => m.id === materialId);
+    if (!mat) return res.status(404).json(Errors.notFound(`原料不存在: ${materialId}`));
+    const g = Number(grams);
+    const c = Number(cost || 0);
+    if (!(g > 0)) return res.status(400).json(Errors.validation('grams 必须大于 0'));
+    const purchase: Purchase = { id: nanoid(), materialId, grams: g, cost: c, operator: String(operator || user?.name || ''), createdAt: nowIso() };
+    storage.addPurchase(purchase);
+    mat.stock += g;
+    storage.upsertMaterial(mat);
+    storage.addInventoryLog({ id: nanoid(), kind: 'in', materialId, grams: g, refType: 'purchase', refId: purchase.id, operator: purchase.operator || user?.name || '', createdAt: nowIso() });
+    purchases.push(purchase);
+  }
+  return res.json({ ok: true, count: purchases.length, purchases });
 });
 
 // ===== Orders (Outbound) =====

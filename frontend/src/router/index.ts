@@ -12,7 +12,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/stats', name: 'stats', component: () => import('../views/Stats.vue'), meta: { requiresAuth: true } },
   { path: '/settings', name: 'settings', component: () => import('../views/Settings.vue'), meta: { requiresAuth: true, roles: ['owner'] } },
   { path: '/products', name: 'products', component: () => import('../views/Products.vue'), meta: { requiresAuth: true } },
-  { path: '/purchases', name: 'purchases', component: () => import('../views/Purchases.vue'), meta: { requiresAuth: true } },
+  { path: '/purchases', name: 'purchases', component: () => import('../views/Purchases.vue'), meta: { requiresAuth: true, title: '进货' } },
   { path: '/pricing', name: 'pricing', component: () => import('../views/Pricing.vue'), meta: { requiresAuth: true, roles: ['owner'] } },
   { path: '/403', name: 'forbidden', component: () => import('../views/Forbidden.vue') },
 ]

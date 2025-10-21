@@ -11,6 +11,7 @@
     </main>
     <nav class="tabbar">
       <el-button :aria-current="is('/') ? 'page' : undefined" :type="is('/')" text @click="go('/')">首页</el-button>
+      <el-button :aria-current="is('/purchases') ? 'page' : undefined" :type="is('/purchases')" text @click="go('/purchases')">进货</el-button>
       <el-button :aria-current="is('/outbound') ? 'page' : undefined" :type="is('/outbound')" text @click="go('/outbound')">取货</el-button>
       <el-button :aria-current="is('/materials') ? 'page' : undefined" :type="is('/materials')" text @click="go('/materials')">库存</el-button>
       <el-button :aria-current="is('/inventory-logs') ? 'page' : undefined" :type="is('/inventory-logs')" text @click="go('/inventory-logs')">流水</el-button>
