@@ -13,7 +13,6 @@
           <el-button type="primary" size="large" class="full" :loading="loading" @click="onSubmit">登录</el-button>
         </el-form-item>
       </el-form>
-      <div class="hint">店长初始账号：13800000000 / 123456</div>
     </el-card>
     <!-- Fallback（开发专用）：当 UI 组件异常未渲染时，使用原生表单保证可登录 -->
     <div class="fb" v-if="isDev">
@@ -62,7 +61,6 @@ async function onSubmit() {
 .login-card { width: 100%; max-width: 420px; }
 .title { text-align:center; margin-bottom: 16px; }
 .full { width: 100%; }
-.hint { color:#999; font-size: 12px; text-align: center; margin-top: 8px; }
 .fb { margin-top: 16px; padding: 12px; border:1px dashed #ccc; border-radius: 8px; max-width: 420px; width: 100%; }
 .fb-title { font-size: 14px; margin-bottom: 8px; color:#666; }
 .fb-row { display:flex; align-items:center; gap:8px; margin:6px 0; }
