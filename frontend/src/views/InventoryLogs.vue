@@ -13,7 +13,11 @@
       </div>
     </div>
     <el-table :data="rows" size="small">
-      <el-table-column prop="createdAt" label="时间" width="180" />
+      <el-table-column prop="createdAt" label="时间" width="180">
+        <template #default="{ row }">
+          {{ formatTime(row.createdAt) }}
+        </template>
+      </el-table-column>
       <el-table-column label="类型" width="80">
         <template #default="{ row }">{{ row.kind === 'in' ? '存入' : '取出' }}</template>
       </el-table-column>
@@ -39,6 +43,23 @@ const pageSize = ref(20)
 const kind = ref('')
 const materialId = ref('')
 const range = ref<[Date, Date] | null>(null)
+
+/**
+ * 将 ISO 时间串格式化为“年-月-日 时:分:秒”形式，便于业务人员在手机上快速理解。
+ * 示例：2025-11-15T14:53:43.276Z -> 2025-11-15 14:53:43
+ */
+function formatTime(iso: string | Date): string {
+  if (!iso) return ''
+  const d = typeof iso === 'string' ? new Date(iso) : iso
+  if (Number.isNaN(d.getTime())) return String(iso)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const ss = String(d.getSeconds()).padStart(2, '0')
+  return `${y}-${m}-${day} ${hh}:${mm}:${ss}`
+}
 
 async function load() {
   const params:any = { page: page.value, pageSize: pageSize.value }

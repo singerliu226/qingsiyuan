@@ -96,4 +96,23 @@ body { color: var(--qs-text); background: var(--qs-surface-muted); }
 .home-wrap .quick { display:flex; align-items:center; gap:8px; }
 .home-wrap h2 { margin: 0; color: var(--qs-text-strong); }
 
-
+/* 移动端适配：工具栏自动换行、表格更紧凑，减少横向滚动负担 */
+@media (max-width: 768px) {
+  .wrap { padding: 8px 8px; }
+  .wrap .top,
+  .home-wrap .top,
+  .toolbar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .wrap .actions,
+  .toolbar .actions {
+    flex-wrap: wrap;
+  }
+  .el-table {
+    font-size: 12px;
+  }
+  .el-table--small .el-table__cell {
+    padding: 6px 8px;
+  }
+}

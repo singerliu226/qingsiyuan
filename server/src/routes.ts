@@ -2,10 +2,10 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import { authMiddleware, requireRole, signToken } from './auth';
-import { storage, backupManager } from './storage';
+import { storage, backupManager, DATA_DIR, DB_FILE } from './storage';
 import { Material, Order, OrderType, Product, ProductRecipeItem, Purchase, PricingPlan, PricingPlanGroup } from './types';
 import { Errors } from './errors';
-import { existsSync, copyFileSync } from 'fs';
+import { existsSync, copyFileSync, createReadStream } from 'fs';
 import { join } from 'path';
 import { ensurePricingSeed } from './seed';
 
@@ -129,6 +129,38 @@ router.patch('/materials/:id', authMiddleware, (req, res) => {
   res.json(mat);
 });
 
+/**
+ * 手工减少原料库存。
+ * 设计说明：
+ * - 仅支持减少库存，避免与正常进货流程混淆；
+ * - 典型场景：盘点报损、过期作废等；
+ * - 会写入库存流水（kind='out', refType='adjust'），方便追溯。
+ */
+router.post('/materials/:id/decrease', authMiddleware, requireRole('owner'), (req, res) => {
+  const id = req.params.id;
+  const mat = storage.materials.find(m => m.id === id);
+  if (!mat) return res.status(404).json(Errors.notFound('原料不存在'));
+  const grams = Number((req.body || {}).grams || 0);
+  const operator = String((req.body || {}).operator || (req as any).user?.name || '');
+  if (!(grams > 0)) return res.status(400).json(Errors.validation('grams 必须大于 0'));
+  if (mat.stock < grams) {
+    return res.status(400).json(Errors.insufficient([{ materialId: mat.id, need: grams, stock: mat.stock }]));
+  }
+  mat.stock -= grams;
+  storage.upsertMaterial(mat);
+  storage.addInventoryLog({
+    id: nanoid(),
+    kind: 'out',
+    materialId: mat.id,
+    grams,
+    refType: 'adjust',
+    refId: `adjust-${Date.now()}`,
+    operator,
+    createdAt: nowIso(),
+  });
+  return res.json({ ok: true, stock: mat.stock });
+});
+
 // ===== Products & Recipes =====
 router.get('/products', authMiddleware, (_req, res) => {
   res.json(storage.products);
@@ -186,6 +218,27 @@ router.patch('/products/:id', authMiddleware, requireRole('owner'), (req, res) =
   res.json(product);
 });
 
+/**
+ * 手工减少成品库存（包数）。
+ * 说明：
+ * - 不回滚原料，仅调整成品 stock 字段，用于盘点时矫正库存。
+ * - 建议仅店长使用，因此沿用 products PATCH 的 owner 权限。
+ */
+router.post('/products/:id/decrease-stock', authMiddleware, requireRole('owner'), (req, res) => {
+  const id = req.params.id;
+  const product = storage.products.find(p => p.id === id);
+  if (!product) return res.status(404).json(Errors.notFound('产品不存在'));
+  const qty = Number((req.body || {}).qty || 0);
+  if (!(qty > 0)) return res.status(400).json(Errors.validation('qty 必须大于 0'));
+  const current = Number((product as any).stock || 0);
+  if (current < qty) {
+    return res.status(400).json(Errors.validation('成品库存不足'));
+  }
+  (product as any).stock = current - qty;
+  storage.upsertProduct(product);
+  return res.json({ ok: true, stock: (product as any).stock });
+});
+
 // ===== Pricing =====
 router.get('/pricing', authMiddleware, requireRole('owner'), (_req, res) => {
   res.json(storage.pricing);
@@ -232,6 +285,7 @@ function discountFor(type: OrderType): number {
     case 'retail': return 1; // 零售默认不打折
     case 'temp': return p.event; // 临时活动沿用 event 折扣
     case 'event': return p.event; // 兼容旧值
+    case 'test': return 1; // 测试类型不参与折扣，按产品基础价结算
     default: return 1;
   }
 }
@@ -320,6 +374,78 @@ router.post('/purchases/batch', authMiddleware, (req, res) => {
   return res.json({ ok: true, count: purchases.length, purchases });
 });
 
+/**
+ * 批量生产成品入库：
+ * - 将原料按配方扣减，并增加对应产品的成品库存（包数）。
+ * - 请求体：{ items: [{ productId, qty, operator? }] }
+ * - 为保证一致性：先汇总校验所有原料是否充足，全部通过后再统一扣减。
+ */
+router.post('/inventory/produce', authMiddleware, (req, res) => {
+  const body = req.body || {};
+  const items = Array.isArray(body.items) ? body.items : [];
+  if (!items.length) return res.status(400).json(Errors.validation('items 不能为空'));
+
+  const user = (req as any).user as { name?: string } | undefined;
+
+  // 1) 汇总原料需求
+  const materialNeeds = new Map<string, number>();
+  for (const it of items) {
+    const productId = String(it.productId || '');
+    const qty = Number(it.qty || 0);
+    if (!productId || !(qty > 0)) {
+      return res.status(400).json(Errors.validation('productId/qty 非法'));
+    }
+    const product = storage.products.find(p => p.id === productId);
+    if (!product) return res.status(404).json(Errors.notFound(`产品不存在: ${productId}`));
+    for (const r of product.recipe) {
+      const need = r.grams * qty;
+      materialNeeds.set(r.materialId, (materialNeeds.get(r.materialId) || 0) + need);
+    }
+  }
+
+  // 2) 校验原料库存是否充足
+  const lacks: Array<{ materialId: string; need: number; stock: number }> = [];
+  for (const [materialId, need] of materialNeeds.entries()) {
+    const mat = storage.materials.find(m => m.id === materialId);
+    if (!mat) return res.status(404).json(Errors.notFound(`原料不存在: ${materialId}`));
+    if (mat.stock < need) {
+      lacks.push({ materialId, need, stock: mat.stock });
+    }
+  }
+  if (lacks.length) return res.status(400).json(Errors.insufficient(lacks));
+
+  // 3) 扣减原料并增加成品库存，写入流水
+  for (const it of items) {
+    const productId = String(it.productId);
+    const qty = Number(it.qty);
+    const operator = String(it.operator || user?.name || '');
+    const product = storage.products.find(p => p.id === productId)!;
+
+    for (const r of product.recipe) {
+      const mat = storage.materials.find(m => m.id === r.materialId)!;
+      const grams = r.grams * qty;
+      mat.stock -= grams;
+      storage.upsertMaterial(mat);
+      storage.addInventoryLog({
+        id: nanoid(),
+        kind: 'out',
+        materialId: mat.id,
+        grams,
+        refType: 'produce',
+        refId: productId,
+        operator,
+        createdAt: nowIso(),
+      });
+    }
+
+    const current = (product as any).stock || 0;
+    (product as any).stock = current + qty;
+    storage.upsertProduct(product);
+  }
+
+  return res.json({ ok: true });
+});
+
 // ===== Orders (Outbound) =====
 router.get('/orders', authMiddleware, (_req, res) => {
   res.json(storage.orders);
@@ -328,24 +454,29 @@ router.get('/orders', authMiddleware, (_req, res) => {
 router.post('/orders', authMiddleware, (req, res) => {
   const { type, productId, qty, person, payment, pricingGroup, pricingPlanId } = req.body || {} as Partial<Order> & { pricingGroup?: PricingPlanGroup | 'vip', pricingPlanId?: string };
   const t = (type || 'retail') as OrderType;
-  if (!['self', 'vip', 'distrib', 'retail', 'temp', 'event'].includes(t)) {
+  if (!['self', 'vip', 'distrib', 'retail', 'temp', 'event', 'test'].includes(t)) {
     return res.status(400).json(Errors.validation('type 非法'));
   }
   const product = storage.products.find(p => p.id === productId);
   if (!product) return res.status(404).json(Errors.notFound('产品不存在'));
   const q = Number(qty || 1);
   if (!(q > 0)) return res.status(400).json(Errors.validation('qty 必须大于 0'));
+  const productStock = Number((product as any).stock || 0);
+  const useFinished = Math.min(productStock, q);
+  const needFromRaw = q - useFinished;
 
-  // Check stock sufficiency
-  const lacks: Array<{ materialId: string; need: number; stock: number }> = [];
-  for (const item of product.recipe) {
-    const mat = storage.materials.find(m => m.id === item.materialId);
-    if (!mat) return res.status(400).json(Errors.notFound(`原料不存在: ${item.materialId}`));
-    const need = item.grams * q;
-    if (mat.stock < need) lacks.push({ materialId: mat.id, need, stock: mat.stock });
-  }
-  if (lacks.length) {
-    return res.status(400).json(Errors.insufficient(lacks));
+  // Check raw material sufficiency（仅对需要按配方现配的数量进行校验）
+  if (needFromRaw > 0) {
+    const lacks: Array<{ materialId: string; need: number; stock: number }> = [];
+    for (const item of product.recipe) {
+      const mat = storage.materials.find(m => m.id === item.materialId);
+      if (!mat) return res.status(400).json(Errors.notFound(`原料不存在: ${item.materialId}`));
+      const need = item.grams * needFromRaw;
+      if (mat.stock < need) lacks.push({ materialId: mat.id, need, stock: mat.stock });
+    }
+    if (lacks.length) {
+      return res.status(400).json(Errors.insufficient(lacks));
+    }
   }
 
   // Compute receivable: 优先使用定价方案的应收每包
@@ -355,13 +486,32 @@ router.post('/orders', authMiddleware, (req, res) => {
 
   // Deduct stock and write logs
   const orderId = nanoid();
-  for (const item of product.recipe) {
-    const mat = storage.materials.find(m => m.id === item.materialId)!;
-    const grams = item.grams * q;
-    mat.stock -= grams;
-    storage.upsertMaterial(mat);
-    const user = (req as any).user as { name?: string } | undefined;
-    storage.addInventoryLog({ id: nanoid(), kind: 'out', materialId: mat.id, grams, refType: 'order', refId: orderId, operator: (person || user?.name || ''), createdAt: nowIso() });
+  const user = (req as any).user as { name?: string } | undefined;
+
+  // 1) 先扣减成品库存（如果有）
+  if (useFinished > 0) {
+    (product as any).stock = productStock - useFinished;
+    storage.upsertProduct(product);
+  }
+
+  // 2) 再按配方扣减需要现配的部分原料
+  if (needFromRaw > 0) {
+    for (const item of product.recipe) {
+      const mat = storage.materials.find(m => m.id === item.materialId)!;
+      const grams = item.grams * needFromRaw;
+      mat.stock -= grams;
+      storage.upsertMaterial(mat);
+      storage.addInventoryLog({
+        id: nanoid(),
+        kind: 'out',
+        materialId: mat.id,
+        grams,
+        refType: 'order',
+        refId: orderId,
+        operator: (person || user?.name || ''),
+        createdAt: nowIso(),
+      });
+    }
   }
 
   const order: Order = {
@@ -369,6 +519,7 @@ router.post('/orders', authMiddleware, (req, res) => {
     type: t,
     productId: product.id,
     qty: q,
+    usedFinished: useFinished || undefined,
     person: person || '',
     receivable,
     payment: (payment || '') as any,
@@ -390,14 +541,33 @@ router.post('/orders/:id/cancel', authMiddleware, (req, res) => {
   if (Date.now() - created > 5 * 60 * 1000) return res.status(400).json(Errors.validation('撤销窗口已过期'));
   const product = storage.products.find(p => p.id === order.productId);
   if (!product) return res.status(400).json(Errors.notFound('产品不存在'));
-  // 回滚库存
-  for (const item of product.recipe) {
-    const mat = storage.materials.find(m => m.id === item.materialId);
-    if (!mat) return res.status(400).json(Errors.notFound(`原料不存在: ${item.materialId}`));
-    const grams = item.grams * order.qty;
-    mat.stock += grams;
-    storage.upsertMaterial(mat);
-    storage.addInventoryLog({ id: nanoid(), kind: 'in', materialId: mat.id, grams, refType: 'order', refId: order.id, createdAt: nowIso() });
+  const usedFinished = order.usedFinished || 0;
+  const usedRaw = order.qty - usedFinished;
+
+  // 回滚成品库存
+  if (usedFinished > 0) {
+    (product as any).stock = Number((product as any).stock || 0) + usedFinished;
+    storage.upsertProduct(product);
+  }
+
+  // 回滚原料库存（仅对下单时按配方现配的部分）
+  if (usedRaw > 0) {
+    for (const item of product.recipe) {
+      const mat = storage.materials.find(m => m.id === item.materialId);
+      if (!mat) return res.status(400).json(Errors.notFound(`原料不存在: ${item.materialId}`));
+      const grams = item.grams * usedRaw;
+      mat.stock += grams;
+      storage.upsertMaterial(mat);
+      storage.addInventoryLog({
+        id: nanoid(),
+        kind: 'in',
+        materialId: mat.id,
+        grams,
+        refType: 'order',
+        refId: order.id,
+        createdAt: nowIso(),
+      });
+    }
   }
   // 删除订单
   storage.removeOrder(order.id);
@@ -422,25 +592,31 @@ router.get('/products/:id/usage', authMiddleware, requireRole('owner'), (req, re
 router.post('/orders/validate', authMiddleware, (req, res) => {
   const { type, productId, qty, pricingGroup, pricingPlanId } = (req.body || {}) as Partial<Order> & { pricingGroup?: PricingPlanGroup | 'vip', pricingPlanId?: string };
   const t = (type || 'retail') as OrderType;
-  if (!['self', 'vip', 'distrib', 'retail', 'temp', 'event'].includes(t)) {
+  if (!['self', 'vip', 'distrib', 'retail', 'temp', 'event', 'test'].includes(t)) {
     return res.status(400).json(Errors.validation('type 非法'));
   }
   const product = storage.products.find(p => p.id === productId);
   if (!product) return res.status(404).json(Errors.notFound('产品不存在'));
   const q = Number(qty || 1);
   if (!(q > 0)) return res.status(400).json(Errors.validation('qty 必须大于 0'));
-  const lacks: Array<{ materialId: string; need: number; stock: number }> = [];
-  for (const item of product.recipe) {
-    const mat = storage.materials.find(m => m.id === item.materialId);
-    if (!mat) return res.status(400).json(Errors.notFound(`原料不存在: ${item.materialId}`));
-    const need = item.grams * q;
-    if (mat.stock < need) lacks.push({ materialId: mat.id, need, stock: mat.stock });
+  const productStock = Number((product as any).stock || 0);
+  const useFinished = Math.min(productStock, q);
+  const needFromRaw = q - useFinished;
+
+  if (needFromRaw > 0) {
+    const lacks: Array<{ materialId: string; need: number; stock: number }> = [];
+    for (const item of product.recipe) {
+      const mat = storage.materials.find(m => m.id === item.materialId);
+      if (!mat) return res.status(400).json(Errors.notFound(`原料不存在: ${item.materialId}`));
+      const need = item.grams * needFromRaw;
+      if (mat.stock < need) lacks.push({ materialId: mat.id, need, stock: mat.stock });
+    }
+    if (lacks.length) return res.status(400).json(Errors.insufficient(lacks));
   }
-  if (lacks.length) return res.status(400).json(Errors.insufficient(lacks));
   const perPackFromPlan = resolvePerPackPrice((pricingGroup as any) || (t === 'vip' ? 'vip' : t === 'distrib' ? 'distrib' : t === 'retail' ? 'retail' : t === 'temp' ? 'temp' : t === 'self' ? 'self' : undefined), pricingPlanId);
   const unit = perPackFromPlan !== undefined ? perPackFromPlan : Number((product.priceBase * discountFor(t)).toFixed(2));
   const receivable = Number((unit * q).toFixed(2));
-  return res.json({ receivable, perPackPrice: unit });
+  return res.json({ receivable, perPackPrice: unit, usedFinished: useFinished, usedFromRaw: needFromRaw });
 });
 
 // ===== Reports =====
@@ -577,7 +753,7 @@ router.get('/inventory/logs', authMiddleware, (req, res) => {
 
 // ===== Backup & Restore (owner only) =====
 router.post('/admin/backup', authMiddleware, requireRole('owner'), (_req, res) => {
-  const src = join(process.cwd(), 'data', 'db.json');
+  const src = DB_FILE;
   if (!existsSync(src)) return res.status(404).json(Errors.notFound('db.json 不存在'));
   const file = backupManager.createBackup();
   return res.json({ ok: true, file });
@@ -603,7 +779,7 @@ router.post('/admin/seed-pricing', authMiddleware, requireRole('owner'), (_req, 
 router.post('/admin/restore', authMiddleware, requireRole('owner'), (req, res) => {
   const { file } = req.body || {};
   if (!file) return res.status(400).json(Errors.validation('file 必填'));
-  const dst = join(process.cwd(), 'data', 'db.json');
+  const dst = DB_FILE;
   if (!existsSync(file)) return res.status(404).json(Errors.notFound('备份文件不存在'));
   copyFileSync(String(file), dst);
   loadDb();
@@ -613,6 +789,20 @@ router.post('/admin/restore', authMiddleware, requireRole('owner'), (req, res) =
 router.get('/admin/backups', authMiddleware, requireRole('owner'), (_req, res) => {
   const files = backupManager.listBackups();
   res.json(files);
+});
+
+// 直接下载当前 db.json 数据文件，便于在 Zeabur 之外做离线备份。
+router.get('/admin/db-download', authMiddleware, requireRole('owner'), (_req, res) => {
+  if (!existsSync(DB_FILE)) {
+    return res.status(404).json(Errors.notFound('db.json 不存在'));
+  }
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="db.json"');
+  const stream = createReadStream(DB_FILE);
+  stream.on('error', (err) => {
+    return res.status(500).json(Errors.validation(`读取数据文件失败: ${err.message}`));
+  });
+  stream.pipe(res);
 });
 
 router.get('/admin/backup-config', authMiddleware, requireRole('owner'), (_req, res) => {

@@ -13,8 +13,8 @@ interface DbShape {
 }
 
 // 允许通过环境变量 DATA_DIR 覆盖数据目录（便于 Zeabur/容器化挂载持久化卷）
-const DATA_DIR = process.env.DATA_DIR ? resolve(process.env.DATA_DIR) : join(process.cwd(), 'data');
-const DB_FILE = join(DATA_DIR, 'db.json');
+export const DATA_DIR = process.env.DATA_DIR ? resolve(process.env.DATA_DIR) : join(process.cwd(), 'data');
+export const DB_FILE = join(DATA_DIR, 'db.json');
 
 const defaultDb: DbShape = {
   users: [],

@@ -27,15 +27,37 @@ export interface Product {
   name: string;
   priceBase: number; // base price per package
   recipe: ProductRecipeItem[];
+  /**
+   * 成品库存（包数）
+   * 说明：
+   * - 用于记录已经预先配好的成品药包数量；
+   * - 取货时会优先扣减该字段，耗尽后再按配方扣减原料；
+   * - 老数据中可能不存在该字段，读取时需视为 0。
+   */
+  stock?: number;
+  /**
+   * 成品库存预警阈值（包数）
+   * - 仅用于前端“成品列表”页展示预警，不影响业务计算；
+   * - 可选字段，缺省视为 0。
+   */
+  threshold?: number;
 }
 
-export type OrderType = 'self' | 'vip' | 'distrib' | 'retail' | 'temp' | 'event';
+export type OrderType = 'self' | 'vip' | 'distrib' | 'retail' | 'temp' | 'event' | 'test';
 
 export interface Order {
   id: string;
   type: OrderType;
   productId: string;
   qty: number;
+  /**
+   * 本次订单中实际消耗的成品包数。
+   * 说明：
+   * - 下单时按照“先用成品库存，再用原料”的顺序计算；
+   * - 若下单时没有可用成品，则该字段为 0 或 undefined；
+   * - 撤销订单时会据此恢复成品库存，其余数量按配方回补原料。
+   */
+  usedFinished?: number;
   person: string;
   receivable: number;
   payment: 'cash' | 'wechat' | 'alipay' | 'other' | '';
@@ -53,7 +75,14 @@ export interface InventoryLog {
   kind: InventoryLogKind;
   materialId: string;
   grams: number;
-  refType: 'order' | 'purchase';
+  /**
+   * 流水来源类型：
+   * - order: 销售出库（按配方扣减原料）
+   * - purchase: 原料进货入库
+   * - produce: 成品生产占用原料（将原料转化为成品库存）
+   * - adjust: 手工调整库存（盘点损益等）
+   */
+  refType: 'order' | 'purchase' | 'produce' | 'adjust';
   refId: string;
   operator?: string; // 执行该操作的账号姓名
   createdAt: string; // ISO

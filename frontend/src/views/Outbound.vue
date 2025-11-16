@@ -18,6 +18,7 @@
               <el-option label="VIP" value="vip" />
               <el-option label="分销" value="distrib" />
               <el-option label="临时活动" value="temp" />
+              <el-option label="测试" value="test" />
             </el-select>
           </el-form-item>
           <template v-if="type==='self' || type==='vip' || type==='distrib' || type==='retail' || type==='temp'">
@@ -34,16 +35,36 @@
       <div v-else-if="step === 1" class="pane">
         <el-form label-width="80px">
           <el-form-item label="产品">
-            <el-select v-model="productId" placeholder="选择产品" :loading="loadingList" @change="refreshQuote">
-              <el-option v-for="p in products" :key="p.id" :label="p.name" :value="p.id" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="数量">
-            <el-input-number v-model="qty" :min="1" @change="refreshQuote" />
+            <div class="multi-products">
+              <div v-for="(row, idx) in items" :key="row.id" class="prod-row">
+                <el-select
+                  v-model="row.productId"
+                  placeholder="选择产品"
+                  :loading="loadingList"
+                  @change="() => refreshQuote(idx)"
+                >
+                  <el-option v-for="p in products" :key="p.id" :label="p.name" :value="p.id" />
+                </el-select>
+                <el-input-number
+                  v-model="row.qty"
+                  :min="1"
+                  @change="() => refreshQuote(idx)"
+                />
+                <el-button
+                  v-if="items.length > 1"
+                  link
+                  type="danger"
+                  @click="removeItem(idx)"
+                >
+                  移除
+                </el-button>
+              </div>
+              <el-button type="primary" link @click="addItem">+ 添加产品</el-button>
+            </div>
           </el-form-item>
           <div class="actions sticky">
             <el-button @click="prev">上一步</el-button>
-            <el-button type="primary" @click="next" :disabled="!productId">下一步</el-button>
+            <el-button type="primary" @click="next" :disabled="!hasValidItem">下一步</el-button>
           </div>
         </el-form>
       </div>
@@ -71,10 +92,15 @@
       <div v-else class="pane">
         <div class="preview">
           <div>类型：{{ typeLabel }}</div>
-          <div>产品：{{ productName }}</div>
-          <div>数量：{{ qty }}</div>
-          <div>应收：<b>¥ {{ receivable }}</b></div>
           <div>支付：{{ paymentLabel }}</div>
+          <div class="preview-list">
+            <div v-for="row in validItems" :key="row.id" class="preview-row">
+              <span>{{ productNameOf(row.productId) }}</span>
+              <span>× {{ row.qty }}</span>
+              <span v-if="row.receivable">，¥ {{ row.receivable }}</span>
+            </div>
+          </div>
+          <div>应收合计：<b>¥ {{ receivable }}</b></div>
         </div>
         <div class="actions sticky">
           <el-button @click="prev">上一步</el-button>
@@ -85,7 +111,7 @@
 
     <el-dialog v-model="dlg.visible" title="提交成功" width="420px">
       <p>应收金额：<b>¥ {{ dlg.receivable }}</b></p>
-      <p>如需撤销，可在 5 分钟内点击下方按钮。</p>
+      <p>如需撤销，可在 5 分钟内点击下方按钮，将本次创建的所有订单一并撤销。</p>
       <template #footer>
         <el-button @click="dlg.visible=false">关闭</el-button>
         <el-button type="danger" :loading="dlg.canceling" @click="cancelOrder">撤销订单</el-button>
@@ -96,18 +122,21 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref, computed } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api/client'
 
 const products = reactive<any[]>([])
 const loadingList = ref(false)
-const productId = ref('')
-const qty = ref(1)
-const type = ref<'self'|'retail'|'vip'|'distrib'|'temp'>('self')
+let nextItemId = 1
+const items = reactive<Array<{ id:number; productId:string; qty:number; receivable:number }>>([
+  { id: nextItemId++, productId: '', qty: 1, receivable: 0 }
+])
+const type = ref<'self'|'retail'|'vip'|'distrib'|'temp'|'test'>('self')
 const person = ref('')
 const loading = ref(false)
 const step = ref(0)
 const payment = ref<'cash'|'wechat'|'alipay'|'other'|''>('')
-const dlg = reactive<{ visible:boolean; orderId:string; receivable:number; canceling:boolean }>({ visible:false, orderId:'', receivable:0, canceling:false })
+const dlg = reactive<{ visible:boolean; orderIds:string[]; receivable:number; canceling:boolean }>({ visible:false, orderIds:[], receivable:0, canceling:false })
 const pricingPlanId = ref<string>('')
 const plans = ref<Array<any>>([])
 
@@ -132,14 +161,45 @@ async function loadPlans() {
 }
 
 async function submit() {
-  if (!productId.value) { ElMessage.warning('请选择产品'); return }
+  const valid = validItems.value
+  if (!valid.length) { ElMessage.warning('请至少选择一种产品并填写数量'); return }
   if (!payment.value) { ElMessage.warning('请选择支付方式'); return }
+
+  // 提交前：如有成品库存不足的行，提示用户是否允许自动按配方扣原料
+  const lackMessages:string[] = []
+  for (const row of valid) {
+    const prod = products.find(p => p.id === row.productId)
+    const stock = Number(prod?.stock || 0)
+    if (row.qty > stock) {
+      const needFromRaw = row.qty - stock
+      if (stock > 0) {
+        lackMessages.push(`${prod?.name || ''}：成品库存仅剩 ${stock} 包，将额外按配方现配 ${needFromRaw} 包扣原料`)
+      } else {
+        lackMessages.push(`${prod?.name || ''}：成品库存为 0，将直接按配方扣原料 ${row.qty} 包`)
+      }
+    }
+  }
+  if (lackMessages.length) {
+    const ok = await ElMessageBox.confirm(
+      `${lackMessages.join('\n')}\n\n是否继续？`,
+      '成品库存不足',
+      { type: 'warning', confirmButtonText: '继续', cancelButtonText: '取消' }
+    ).then(() => true).catch(() => false)
+    if (!ok) return
+  }
+
   loading.value = true
   try {
-    const { data } = await api.post('/orders', { type: type.value, productId: productId.value, qty: qty.value, person: person.value, payment: payment.value, pricingGroup: pricingGroup.value, pricingPlanId: pricingPlanId.value })
+    const orderIds:string[] = []
+    let total = 0
+    for (const row of valid) {
+      const { data } = await api.post('/orders', { type: type.value, productId: row.productId, qty: row.qty, person: person.value, payment: payment.value, pricingGroup: pricingGroup.value, pricingPlanId: pricingPlanId.value })
+      orderIds.push(data.id)
+      total += data.receivable
+    }
     dlg.visible = true
-    dlg.orderId = data.id
-    dlg.receivable = data.receivable
+    dlg.orderIds = orderIds
+    dlg.receivable = total
     step.value = 0
     person.value = ''
     payment.value = ''
@@ -152,11 +212,13 @@ async function submit() {
 }
 
 async function cancelOrder() {
-  if (!dlg.orderId) return
+  if (!dlg.orderIds.length) return
   dlg.canceling = true
   try {
-    await api.post(`/orders/${dlg.orderId}/cancel`)
-    ElMessage.success('已撤销订单并回滚库存')
+    for (const id of dlg.orderIds) {
+      await api.post(`/orders/${id}/cancel`)
+    }
+    ElMessage.success('已撤销本次所有订单并回滚库存')
     dlg.visible = false
   } catch (e:any) {
     ElMessage.error(e?.response?.data?.error?.message || e.message || '撤销失败')
@@ -168,10 +230,12 @@ async function cancelOrder() {
 function next() { step.value = Math.min(3, step.value + 1) }
 function prev() { step.value = Math.max(0, step.value - 1) }
 
-const productName = computed(() => products.find(p => p.id === productId.value)?.name || '')
-const typeLabel = computed(() => ({ self:'自用', retail:'零售', vip:'VIP', distrib:'分销', temp:'临时活动' } as any)[type.value])
+const validItems = computed(() => items.filter(r => r.productId && r.qty > 0))
+const hasValidItem = computed(() => validItems.value.length > 0)
+const productNameOf = (id:string) => products.find(p => p.id === id)?.name || ''
+const typeLabel = computed(() => ({ self:'自用', retail:'零售', vip:'VIP', distrib:'分销', temp:'临时活动', test:'测试' } as any)[type.value])
 const paymentLabel = computed(() => ({ cash:'现金', wechat:'微信', alipay:'支付宝', other:'其他', '':'' } as any)[payment.value])
-const receivable = ref(0)
+const receivable = computed(() => validItems.value.reduce((sum, row) => sum + (row.receivable || 0), 0))
 const pricingGroup = computed(() => {
   if (type.value === 'self') return 'self'
   if (type.value === 'vip') return 'vip'
@@ -189,14 +253,33 @@ function planLabel(pl:any){ return `${pl.name}（¥${pl.setPrice}/${pl.packCount
 function onTypeChange(){ pricingPlanId.value=''; loadPlans(); refreshQuote() }
 function onPlanDropdown(open:boolean){ if (open) loadPlans() }
 
-async function refreshQuote() {
-  receivable.value = 0
-  if (!productId.value || !qty.value) return
-  try {
-    const { data } = await api.post('/orders/validate', { type: type.value, productId: productId.value, qty: qty.value, pricingGroup: pricingGroup.value, pricingPlanId: pricingPlanId.value })
-    receivable.value = data.receivable
-  } catch (e:any) {
-    receivable.value = 0
+function addItem() {
+  items.push({ id: nextItemId++, productId: '', qty: 1, receivable: 0 })
+}
+
+function removeItem(idx:number) {
+  if (items.length <= 1) return
+  items.splice(idx, 1)
+}
+
+async function refreshQuote(index?:number) {
+  if (typeof index === 'number') {
+    const row = items[index]
+    if (!row) return
+    row.receivable = 0
+    if (!row.productId || !row.qty) return
+    try {
+      const { data } = await api.post('/orders/validate', { type: type.value, productId: row.productId, qty: row.qty, pricingGroup: pricingGroup.value, pricingPlanId: pricingPlanId.value })
+      row.receivable = data.receivable
+    } catch (e:any) {
+      row.receivable = 0
+    }
+    return
+  }
+  // 当类型或方案变化时，逐行刷新
+  for (let i = 0; i < items.length; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    await refreshQuote(i)
   }
 }
 
