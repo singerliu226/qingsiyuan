@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import { authMiddleware, requireRole, signToken } from './auth';
-import { storage, backupManager, DATA_DIR, DB_FILE } from './storage';
+import { storage, backupManager, DATA_DIR, DB_FILE, loadDb } from './storage';
 import { Material, Order, OrderType, Product, ProductRecipeItem, Purchase, PricingPlan, PricingPlanGroup } from './types';
 import { Errors } from './errors';
 import { existsSync, copyFileSync, createReadStream } from 'fs';
