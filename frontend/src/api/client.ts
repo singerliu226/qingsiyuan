@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, { type AxiosRequestHeaders } from 'axios'
 
 // 基于环境变量配置 API_BASE，默认回退到 '/api'（开发环境由 Vite 代理转发）
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || '/api'
@@ -9,7 +9,8 @@ const api = axios.create({ baseURL: API_BASE })
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   if (token) {
-    (config.headers ||= {}).Authorization = `Bearer ${token}`
+    const headers = (config.headers ||= {} as AxiosRequestHeaders)
+    headers.Authorization = `Bearer ${token}`
   }
   return config
 })

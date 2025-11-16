@@ -170,6 +170,7 @@
 
 <script setup lang="ts">
 import { reactive, ref, onMounted, computed } from 'vue'
+import { ElMessage } from 'element-plus'
 import api from '../api/client'
 
 type Plan = { id?: string; group: 'self'|'distrib'|'retail'|'temp'|'special'; name: string; setPrice: number; packCount: number; perPackPrice?: number; remark?: string }
@@ -182,11 +183,6 @@ const plansVip = computed(() => form.plans.filter(p => p.group==='special' && p.
 const plansDistrib = computed(() => form.plans.filter(p => p.group==='distrib'))
 const plansRetail = computed(() => form.plans.filter(p => p.group==='retail' && p.name!=='VIP'))
 const plansTemp = computed(() => form.plans.filter(p => p.group==='temp'))
-
-function perPack(p: Plan) {
-  const n = Number(p.packCount || 0)
-  return n > 0 ? Math.round(Number(p.setPrice || 0) / n) : 0
-}
 
 function addPlan(group:'self'|'distrib'|'retail'|'temp') {
   const seq = (form.plans.filter(p => p.group===group).length + 1)

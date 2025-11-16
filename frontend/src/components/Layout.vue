@@ -220,7 +220,6 @@ main { padding: 12px; }
   .topbar { position: static; }
   .menu-toggle { display: none; }
   .mobile-menu-backdrop { display: none; }
-  }
 }
 </style>
 

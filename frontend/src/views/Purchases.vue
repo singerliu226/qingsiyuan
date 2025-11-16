@@ -86,7 +86,7 @@ async function loadMaterials() {
       const idx = tableData.findIndex(r => r.id === prefer)
       if (idx > 0) {
         const [row] = tableData.splice(idx, 1)
-        tableData.unshift(row)
+        if (row) tableData.unshift(row)
       }
     }
   } catch (e:any) {
@@ -107,7 +107,7 @@ async function loadProducts() {
       const idx = productRows.findIndex(r => r.id === prefer)
       if (idx > 0) {
         const [row] = productRows.splice(idx, 1)
-        productRows.unshift(row)
+        if (row) productRows.unshift(row)
       }
     }
   } catch (e:any) {

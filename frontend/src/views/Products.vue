@@ -78,6 +78,7 @@
 
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import api from '../api/client'
 
 const rows = reactive<any[]>([])

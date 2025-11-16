@@ -55,8 +55,7 @@ window.addEventListener('error', (e) => {
   const msg = (e as ErrorEvent)?.error?.stack || String(e?.message || e)
   setOverlay(`${summarizeState()}\nERROR:\n${msg}`)
 })
-window.addEventListener('unhandledrejection', (e) => {
-  // @ts-expect-error PromiseRejectionEvent 非标准属性在不同浏览器存在差异
+window.addEventListener('unhandledrejection', (e: any) => {
   const reason = e?.reason?.stack || String(e?.reason || e)
   setOverlay(`${summarizeState()}\nUNHANDLED:\n${reason}`)
 })
