@@ -43,7 +43,7 @@ export interface Product {
   threshold?: number;
 }
 
-export type OrderType = 'self' | 'vip' | 'distrib' | 'retail' | 'temp' | 'event' | 'test';
+export type OrderType = 'self' | 'vip' | 'distrib' | 'retail' | 'temp' | 'event' | 'test' | 'gift';
 
 export interface Order {
   id: string;
@@ -73,14 +73,36 @@ export type InventoryLogKind = 'in' | 'out';
 export interface InventoryLog {
   id: string;
   kind: InventoryLogKind;
-  materialId: string;
-  grams: number;
+  /**
+   * 原料维度信息（旧版字段，仍然保留以兼容历史数据）：
+   * - materialId: 原料 ID，表示该条流水针对哪种原料；
+   * - grams:     原料出入库克数，正数且单位为克。
+   *
+   * 从设计上看，一条流水可以是“原料流水”或“成品流水”：
+   * - 仅 materialId/grams 有值 → 代表某种原料的入库/出库；
+   * - 仅 productId/packages 有值 → 代表某个成品的入库/出库；
+   * - 目前不会同时对同一条记录既写原料又写成品，方便前端区分展示。
+   */
+  materialId?: string;
+  grams?: number;
+  /**
+   * 成品维度信息（新增）：
+   * - productId: 成品产品 ID；
+   * - packages:  成品出入库包数。
+   *
+   * 典型使用场景：
+   * - 生产成品时增加成品库存（inventory/produce）；
+   * - 订单取货优先消耗成品库存（orders）；
+   * - 店长在“成品列表”中手工调整成品库存（decrease-stock）。
+   */
+  productId?: string;
+  packages?: number;
   /**
    * 流水来源类型：
-   * - order: 销售出库（按配方扣减原料）
-   * - purchase: 原料进货入库
-   * - produce: 成品生产占用原料（将原料转化为成品库存）
-   * - adjust: 手工调整库存（盘点损益等）
+   * - order:   销售出库（可同时产生原料或成品流水）
+   * - purchase:原料进货入库
+   * - produce: 成品生产（会产生原料出库 + 成品入库两类流水）
+   * - adjust:  手工调整库存（盘点损益等，既可能作用于原料也可能作用于成品）
    */
   refType: 'order' | 'purchase' | 'produce' | 'adjust';
   refId: string;

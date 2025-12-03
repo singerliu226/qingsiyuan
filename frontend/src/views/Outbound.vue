@@ -19,6 +19,7 @@
               <el-option label="分销" value="distrib" />
               <el-option label="临时活动" value="temp" />
               <el-option label="测试" value="test" />
+              <el-option label="赠送" value="gift" />
             </el-select>
           </el-form-item>
           <template v-if="type==='self' || type==='vip' || type==='distrib' || type==='retail' || type==='temp'">
@@ -95,12 +96,24 @@
           <div>支付：{{ paymentLabel }}</div>
           <div class="preview-list">
             <div v-for="row in validItems" :key="row.id" class="preview-row">
-              <span>{{ productNameOf(row.productId) }}</span>
-              <span>× {{ row.qty }}</span>
-              <span v-if="row.receivable">，¥ {{ row.receivable }}</span>
+              <div>
+                <span>{{ productNameOf(row.productId) }}</span>
+                <span>× {{ row.qty }}</span>
+                <span>，系统金额：¥ {{ row.receivable || 0 }}</span>
+              </div>
+              <div class="preview-row-edit">
+                <span>实际每包价格：</span>
+                <el-input-number
+                  v-model="row.unitOverride"
+                  :min="0"
+                  :step="1"
+                  size="small"
+                  placeholder="可不填"
+                />
+              </div>
             </div>
           </div>
-          <div>应收合计：<b>¥ {{ receivable }}</b></div>
+          <div>本次应收合计：<b>¥ {{ receivable }}</b></div>
         </div>
         <div class="actions sticky">
           <el-button @click="prev">上一步</el-button>
@@ -128,10 +141,10 @@ import api from '../api/client'
 const products = reactive<any[]>([])
 const loadingList = ref(false)
 let nextItemId = 1
-const items = reactive<Array<{ id:number; productId:string; qty:number; receivable:number }>>([
-  { id: nextItemId++, productId: '', qty: 1, receivable: 0 }
+const items = reactive<Array<{ id:number; productId:string; qty:number; receivable:number; unitOverride?:number }>>([
+  { id: nextItemId++, productId: '', qty: 1, receivable: 0, unitOverride: undefined }
 ])
-const type = ref<'self'|'retail'|'vip'|'distrib'|'temp'|'test'>('self')
+const type = ref<'self'|'retail'|'vip'|'distrib'|'temp'|'test'|'gift'>('self')
 const person = ref('')
 const loading = ref(false)
 const step = ref(0)
@@ -193,7 +206,24 @@ async function submit() {
     const orderIds:string[] = []
     let total = 0
     for (const row of valid) {
-      const { data } = await api.post('/orders', { type: type.value, productId: row.productId, qty: row.qty, person: person.value, payment: payment.value, pricingGroup: pricingGroup.value, pricingPlanId: pricingPlanId.value })
+      const overridePerPack = row.unitOverride
+      const overrideTotal =
+        overridePerPack !== undefined && overridePerPack !== null
+          ? Number((overridePerPack * row.qty).toFixed(2))
+          : undefined
+      const payload: any = {
+        type: type.value,
+        productId: row.productId,
+        qty: row.qty,
+        person: person.value,
+        payment: payment.value,
+        pricingGroup: pricingGroup.value,
+        pricingPlanId: pricingPlanId.value,
+      }
+      if (overrideTotal !== undefined && overrideTotal >= 0) {
+        payload.receivableOverride = overrideTotal
+      }
+      const { data } = await api.post('/orders', payload)
       orderIds.push(data.id)
       total += data.receivable
     }
@@ -233,9 +263,17 @@ function prev() { step.value = Math.max(0, step.value - 1) }
 const validItems = computed(() => items.filter(r => r.productId && r.qty > 0))
 const hasValidItem = computed(() => validItems.value.length > 0)
 const productNameOf = (id:string) => products.find(p => p.id === id)?.name || ''
-const typeLabel = computed(() => ({ self:'自用', retail:'零售', vip:'VIP', distrib:'分销', temp:'临时活动', test:'测试' } as any)[type.value])
+const typeLabel = computed(() => ({ self:'自用', retail:'零售', vip:'VIP', distrib:'分销', temp:'临时活动', test:'测试', gift:'赠送' } as any)[type.value])
 const paymentLabel = computed(() => ({ cash:'现金', wechat:'微信', alipay:'支付宝', other:'其他', '':'' } as any)[payment.value])
-const receivable = computed(() => validItems.value.reduce((sum, row) => sum + (row.receivable || 0), 0))
+const receivable = computed(() =>
+  validItems.value.reduce((sum, row) => {
+    const rowTotal =
+      row.unitOverride !== undefined && row.unitOverride !== null
+        ? Number((row.unitOverride * row.qty).toFixed(2))
+        : row.receivable || 0
+    return sum + rowTotal
+  }, 0),
+)
 const pricingGroup = computed(() => {
   if (type.value === 'self') return 'self'
   if (type.value === 'vip') return 'vip'
@@ -254,7 +292,7 @@ function onTypeChange(){ pricingPlanId.value=''; loadPlans(); refreshQuote() }
 function onPlanDropdown(open:boolean){ if (open) loadPlans() }
 
 function addItem() {
-  items.push({ id: nextItemId++, productId: '', qty: 1, receivable: 0 })
+  items.push({ id: nextItemId++, productId: '', qty: 1, receivable: 0, unitOverride: undefined })
 }
 
 function removeItem(idx:number) {

@@ -236,6 +236,18 @@ router.post('/products/:id/decrease-stock', authMiddleware, requireRole('owner')
   }
   (product as any).stock = current - qty;
   storage.upsertProduct(product);
+  // 记录成品手工调整流水（出库）
+  const operator = (req as any).user?.name || '';
+  storage.addInventoryLog({
+    id: nanoid(),
+    kind: 'out',
+    productId: product.id,
+    packages: qty,
+    refType: 'adjust',
+    refId: `product-adjust-${Date.now()}`,
+    operator,
+    createdAt: nowIso(),
+  });
   return res.json({ ok: true, stock: (product as any).stock });
 });
 
@@ -286,6 +298,7 @@ function discountFor(type: OrderType): number {
     case 'temp': return p.event; // 临时活动沿用 event 折扣
     case 'event': return p.event; // 兼容旧值
     case 'test': return 1; // 测试类型不参与折扣，按产品基础价结算
+    case 'gift': return 0; // 赠送类型默认价格为 0
     default: return 1;
   }
 }
@@ -441,6 +454,17 @@ router.post('/inventory/produce', authMiddleware, (req, res) => {
     const current = (product as any).stock || 0;
     (product as any).stock = current + qty;
     storage.upsertProduct(product);
+    // 记录成品入库流水：便于在前端统一查看成品库存变化
+    storage.addInventoryLog({
+      id: nanoid(),
+      kind: 'in',
+      productId: product.id,
+      packages: qty,
+      refType: 'produce',
+      refId: productId,
+      operator,
+      createdAt: nowIso(),
+    });
   }
 
   return res.json({ ok: true });
@@ -454,7 +478,7 @@ router.get('/orders', authMiddleware, (_req, res) => {
 router.post('/orders', authMiddleware, (req, res) => {
   const { type, productId, qty, person, payment, pricingGroup, pricingPlanId } = req.body || {} as Partial<Order> & { pricingGroup?: PricingPlanGroup | 'vip', pricingPlanId?: string };
   const t = (type || 'retail') as OrderType;
-  if (!['self', 'vip', 'distrib', 'retail', 'temp', 'event', 'test'].includes(t)) {
+  if (!['self', 'vip', 'distrib', 'retail', 'temp', 'event', 'test', 'gift'].includes(t)) {
     return res.status(400).json(Errors.validation('type 非法'));
   }
   const product = storage.products.find(p => p.id === productId);
@@ -492,6 +516,17 @@ router.post('/orders', authMiddleware, (req, res) => {
   if (useFinished > 0) {
     (product as any).stock = productStock - useFinished;
     storage.upsertProduct(product);
+    // 记录成品出库流水：优先消耗的成品包数
+    storage.addInventoryLog({
+      id: nanoid(),
+      kind: 'out',
+      productId: product.id,
+      packages: useFinished,
+      refType: 'order',
+      refId: orderId,
+      operator: (person || user?.name || ''),
+      createdAt: nowIso(),
+    });
   }
 
   // 2) 再按配方扣减需要现配的部分原料
@@ -514,6 +549,17 @@ router.post('/orders', authMiddleware, (req, res) => {
     }
   }
 
+  // 如前端传入 receivableOverride，则以该值为准记录应收金额；否则使用系统计算值
+  const overrideRaw = (req.body as any)?.receivableOverride;
+  const override =
+    overrideRaw !== undefined && overrideRaw !== null
+      ? Number(overrideRaw)
+      : undefined;
+  const finalReceivable =
+    override !== undefined && isFinite(override) && override >= 0
+      ? Number(override.toFixed(2))
+      : receivable;
+
   const order: Order = {
     id: orderId,
     type: t,
@@ -521,7 +567,7 @@ router.post('/orders', authMiddleware, (req, res) => {
     qty: q,
     usedFinished: useFinished || undefined,
     person: person || '',
-    receivable,
+    receivable: finalReceivable,
     payment: (payment || '') as any,
     createdAt: nowIso(),
     pricingGroup: pricingGroup as any,
@@ -548,6 +594,16 @@ router.post('/orders/:id/cancel', authMiddleware, (req, res) => {
   if (usedFinished > 0) {
     (product as any).stock = Number((product as any).stock || 0) + usedFinished;
     storage.upsertProduct(product);
+    // 记录成品回滚流水：撤销订单时补回已消耗的成品包数
+    storage.addInventoryLog({
+      id: nanoid(),
+      kind: 'in',
+      productId: product.id,
+      packages: usedFinished,
+      refType: 'order',
+      refId: order.id,
+      createdAt: nowIso(),
+    });
   }
 
   // 回滚原料库存（仅对下单时按配方现配的部分）
@@ -592,7 +648,7 @@ router.get('/products/:id/usage', authMiddleware, requireRole('owner'), (req, re
 router.post('/orders/validate', authMiddleware, (req, res) => {
   const { type, productId, qty, pricingGroup, pricingPlanId } = (req.body || {}) as Partial<Order> & { pricingGroup?: PricingPlanGroup | 'vip', pricingPlanId?: string };
   const t = (type || 'retail') as OrderType;
-  if (!['self', 'vip', 'distrib', 'retail', 'temp', 'event', 'test'].includes(t)) {
+  if (!['self', 'vip', 'distrib', 'retail', 'temp', 'event', 'test', 'gift'].includes(t)) {
     return res.status(400).json(Errors.validation('type 非法'));
   }
   const product = storage.products.find(p => p.id === productId);
@@ -735,18 +791,27 @@ router.get('/inventory/logs', authMiddleware, (req, res) => {
   const slice = rows.slice(start, start + ps);
   // enrich with operator fallback for legacy rows
   const data = slice.map(l => {
-    if (!('operator' in l) || !(l as any).operator) {
-      let operator = '';
+    const enriched: any = { ...l };
+    // 兼容旧数据：补充缺失的 operator 信息
+    if (!enriched.operator) {
       if (l.refType === 'order') {
         const o = storage.orders.find(o => o.id === l.refId);
-        operator = o?.person || '';
+        enriched.operator = o?.person || '';
       } else if (l.refType === 'purchase') {
-        const p = storage.purchases.find(p => p.id === l.refId);
-        operator = p?.operator || '';
+        const p0 = storage.purchases.find(p => p.id === l.refId);
+        enriched.operator = p0?.operator || '';
       }
-      return { ...l, operator } as any;
     }
-    return l as any;
+    // 补充名称信息，便于前端直接展示
+    if (l.materialId) {
+      const mat = storage.materials.find(m => m.id === l.materialId);
+      enriched.materialName = mat?.name || '';
+    }
+    if ((l as any).productId) {
+      const prod = storage.products.find(p => p.id === (l as any).productId);
+      enriched.productName = prod?.name || '';
+    }
+    return enriched;
   });
   res.json({ total, page: p, pageSize: ps, data });
 });

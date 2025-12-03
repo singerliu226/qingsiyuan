@@ -21,7 +21,20 @@
       <el-table-column label="类型" width="80">
         <template #default="{ row }">{{ row.kind === 'in' ? '存入' : '取出' }}</template>
       </el-table-column>
-      <el-table-column prop="grams" label="克数" width="100" />
+      <el-table-column label="对象">
+        <template #default="{ row }">
+          <span v-if="row.materialId">原料 - {{ row.materialName || row.materialId }}</span>
+          <span v-else-if="row.productId">成品 - {{ row.productName || row.productId }}</span>
+          <span v-else>—</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="数量" width="140">
+        <template #default="{ row }">
+          <span v-if="row.grams">{{ row.grams }} 克</span>
+          <span v-else-if="row.packages">{{ row.packages }} 包</span>
+          <span v-else>—</span>
+        </template>
+      </el-table-column>
       <el-table-column label="操作人">
         <template #default="{ row }">{{ row.operator || row.person || '—' }}</template>
       </el-table-column>
