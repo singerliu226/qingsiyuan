@@ -44,6 +44,10 @@
           <el-button v-if="auth.user?.role==='owner'" type="danger" @click="restore" :loading="bk.loading">从备份恢复</el-button>
         </div>
         <div v-if="auth.user?.role==='owner'" class="export">
+          <input ref="uploadInput" type="file" accept="application/json" style="display:none" @change="onSelectBackupFile">
+          <el-button :loading="bk.loading" @click="triggerUpload">上传备份 JSON 并恢复</el-button>
+        </div>
+        <div v-if="auth.user?.role==='owner'" class="export">
           <el-popconfirm title="确认将所有原料库存归零？此操作不可撤销" confirm-button-text="确认" cancel-button-text="取消" @confirm="zeroMaterials">
             <template #reference>
               <el-button type="warning">库存一键归零</el-button>
@@ -111,6 +115,7 @@ const users = reactive<any[]>([])
 const dlg = reactive<any>({ visible:false, loading:false, mode:'create', id:'', name:'', phone:'', role:'staff', status:'active', password:'' })
 const pwd = reactive<any>({ current:'', next:'', loading:false })
 const bk = reactive<any>({ loading:false, file:'', list:[] as string[] })
+const uploadInput = ref<HTMLInputElement | null>(null)
 const cfg = reactive<any>({ enabled:false, hours:24, retain:7 })
 
 async function loadUsers() {
@@ -219,6 +224,44 @@ async function zeroMaterials() {
   if (auth.user?.role !== 'owner') return
   const { data } = await api.post('/admin/materials-zero')
   ElMessage.success(`已归零，共 ${data.count} 项原料`)
+}
+
+function triggerUpload() {
+  if (!uploadInput.value) return
+  uploadInput.value.value = ''
+  uploadInput.value.click()
+}
+
+async function onSelectBackupFile(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = input.files
+  if (!files || !files.length) return
+  const file: File = files[0]!
+  const reader = new FileReader()
+  bk.loading = true
+  reader.onload = async () => {
+    try {
+      const text = String(reader.result || '')
+      await api.post('/admin/backup-upload', {
+        name: file.name,
+        content: text,
+        apply: true
+      })
+      ElMessage.success('备份上传并恢复完成')
+      await loadBackupList()
+    } catch (err:any) {
+      const msg = err?.response?.data?.error?.message || err?.message || '上传备份失败'
+      ElMessage.error(msg)
+    } finally {
+      bk.loading = false
+      if (uploadInput.value) uploadInput.value.value = ''
+    }
+  }
+  reader.onerror = () => {
+    bk.loading = false
+    ElMessage.error('读取本地文件失败')
+  }
+  reader.readAsText(file, 'utf-8')
 }
 </script>
 

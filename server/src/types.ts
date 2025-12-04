@@ -62,6 +62,13 @@ export interface Order {
   receivable: number;
   payment: 'cash' | 'wechat' | 'alipay' | 'other' | '';
   createdAt: string; // ISO
+  /**
+   * 订单备注（可选）。
+   * 说明：
+   * - 由前端“取货登记”页的自由输入栏传入；
+   * - 仅用于人工查阅，当前不参与统计或任何业务计算。
+   */
+  remark?: string;
   // 定价策略（可选，便于追溯）
   pricingGroup?: PricingPlanGroup | 'vip';
   pricingPlanId?: string;

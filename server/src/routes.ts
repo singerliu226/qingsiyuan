@@ -5,7 +5,7 @@ import { authMiddleware, requireRole, signToken } from './auth';
 import { storage, backupManager, DATA_DIR, DB_FILE, loadDb } from './storage';
 import { Material, Order, OrderType, Product, ProductRecipeItem, Purchase, PricingPlan, PricingPlanGroup } from './types';
 import { Errors } from './errors';
-import { existsSync, copyFileSync, createReadStream } from 'fs';
+import { existsSync, copyFileSync, createReadStream, writeFileSync } from 'fs';
 import { join } from 'path';
 import { ensurePricingSeed } from './seed';
 
@@ -476,7 +476,7 @@ router.get('/orders', authMiddleware, (_req, res) => {
 });
 
 router.post('/orders', authMiddleware, (req, res) => {
-  const { type, productId, qty, person, payment, pricingGroup, pricingPlanId } = req.body || {} as Partial<Order> & { pricingGroup?: PricingPlanGroup | 'vip', pricingPlanId?: string };
+  const { type, productId, qty, person, payment, pricingGroup, pricingPlanId, remark } = req.body || {} as Partial<Order> & { pricingGroup?: PricingPlanGroup | 'vip', pricingPlanId?: string };
   const t = (type || 'retail') as OrderType;
   if (!['self', 'vip', 'distrib', 'retail', 'temp', 'event', 'test', 'gift'].includes(t)) {
     return res.status(400).json(Errors.validation('type 非法'));
@@ -573,6 +573,7 @@ router.post('/orders', authMiddleware, (req, res) => {
     pricingGroup: pricingGroup as any,
     pricingPlanId,
     perPackPrice: unit,
+    remark: remark ? String(remark) : undefined,
   };
   storage.addOrder(order);
   res.status(201).json({ id: order.id, receivable: order.receivable, createdAt: order.createdAt });
@@ -822,6 +823,61 @@ router.post('/admin/backup', authMiddleware, requireRole('owner'), (_req, res) =
   if (!existsSync(src)) return res.status(404).json(Errors.notFound('db.json 不存在'));
   const file = backupManager.createBackup();
   return res.json({ ok: true, file });
+});
+
+/**
+ * 上传备份文件并可选立即生效（仅店长）。
+ * 设计说明：
+ * - 前端在浏览器中读取本地 JSON 文件为字符串，通过 body 传递 { name, content, apply }；
+ * - 服务端做最基本的 JSON 解析与结构校验，确保是一个包含核心字段的对象；
+ * - 文件会以 db.backup.<name> 形式落在 DATA_DIR 目录下，方便与现有备份列表统一管理；
+ * - 当 apply=true 时，会同时覆盖 DB_FILE 并调用 loadDb 使其立即生效。
+ */
+router.post('/admin/backup-upload', authMiddleware, requireRole('owner'), (req, res) => {
+  const body = req.body || {};
+  const rawContent = body.content;
+  const nameRaw = body.name as string | undefined;
+  const apply = !!body.apply;
+
+  if (typeof rawContent !== 'string' || !rawContent.trim()) {
+    return res.status(400).json(Errors.validation('content 必须为非空字符串'));
+  }
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(rawContent);
+  } catch (e: any) {
+    return res.status(400).json(Errors.validation(`JSON 解析失败: ${e?.message || ''}`));
+  }
+
+  // 进行一个非常宽松的结构校验，主要避免误传完全不相关的文件。
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.users) || !Array.isArray(parsed.materials)) {
+    return res.status(400).json(Errors.validation('备份文件结构不正确，缺少 users/materials 等字段'));
+  }
+
+  const ts = Date.now();
+  const safeBase = (nameRaw && nameRaw.trim()) ? nameRaw.trim().replace(/[^\w.-]/g, '_') : `upload-${ts}.json`;
+  const fileName = safeBase.startsWith('db.backup.') ? safeBase : `db.backup.${safeBase}`;
+  const fullPath = join(DATA_DIR, fileName);
+
+  try {
+    writeFileSync(fullPath, JSON.stringify(parsed, null, 2), 'utf-8');
+  } catch (e: any) {
+    return res.status(500).json(Errors.validation(`写入备份文件失败: ${e?.message || ''}`));
+  }
+
+  let applied = false;
+  if (apply) {
+    try {
+      copyFileSync(fullPath, DB_FILE);
+      loadDb();
+      applied = true;
+    } catch (e: any) {
+      return res.status(500).json(Errors.validation(`应用备份失败: ${e?.message || ''}`));
+    }
+  }
+
+  return res.json({ ok: true, file: fullPath, applied });
 });
 
 // 批量清零所有原料库存（仅店长）

@@ -83,6 +83,9 @@
               <el-option label="其他" value="other" />
             </el-select>
           </el-form-item>
+          <el-form-item label="备注">
+            <el-input v-model="remark" placeholder="本次取货备注（可选）" />
+          </el-form-item>
           <div class="actions">
             <el-button @click="prev">上一步</el-button>
             <el-button type="primary" @click="next" :disabled="!payment">下一步</el-button>
@@ -146,6 +149,7 @@ const items = reactive<Array<{ id:number; productId:string; qty:number; receivab
 ])
 const type = ref<'self'|'retail'|'vip'|'distrib'|'temp'|'test'|'gift'>('self')
 const person = ref('')
+const remark = ref('')
 const loading = ref(false)
 const step = ref(0)
 const payment = ref<'cash'|'wechat'|'alipay'|'other'|''>('')
@@ -219,6 +223,7 @@ async function submit() {
         payment: payment.value,
         pricingGroup: pricingGroup.value,
         pricingPlanId: pricingPlanId.value,
+        remark: remark.value,
       }
       if (overrideTotal !== undefined && overrideTotal >= 0) {
         payload.receivableOverride = overrideTotal
@@ -233,6 +238,7 @@ async function submit() {
     step.value = 0
     person.value = ''
     payment.value = ''
+    remark.value = ''
   } catch (e:any) {
     const msg = e?.response?.data?.error?.message || e.message || '提交失败'
     ElMessage.error(msg)
