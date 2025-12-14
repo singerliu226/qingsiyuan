@@ -73,7 +73,7 @@
       <div v-else-if="step === 2" class="pane">
         <el-form label-width="80px">
           <el-form-item label="取货人">
-            <el-input v-model="person" placeholder="客户姓名（可选）" />
+            <el-input v-model="person" placeholder="您的姓名（默认为本账号操作者）" />
           </el-form-item>
           <el-form-item label="支付方式">
             <el-select v-model="payment" placeholder="选择支付方式">
@@ -84,7 +84,7 @@
             </el-select>
           </el-form-item>
           <el-form-item label="备注">
-            <el-input v-model="remark" placeholder="本次取货备注（可选）" />
+            <el-input v-model="remark" placeholder="客户姓名" />
           </el-form-item>
           <div class="actions">
             <el-button @click="prev">上一步</el-button>
