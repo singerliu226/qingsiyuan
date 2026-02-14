@@ -89,6 +89,22 @@ export const storage = {
     return false;
   },
   addPurchase(p: Purchase) { db.purchases.push(p); saveDb(); },
+  /**
+   * 删除一条进货入库记录。
+   * 设计说明：
+   * - 该方法只负责从 purchases 数组移除并落盘；
+   * - “撤回进货”业务需要同时回滚库存并写入对冲流水，属于路由层的业务逻辑，
+   *   不在 storage 层隐式完成，避免后续复用时产生意外副作用。
+   */
+  removePurchase(id: string) {
+    const i = db.purchases.findIndex(p => p.id === id);
+    if (i >= 0) {
+      db.purchases.splice(i, 1);
+      saveDb();
+      return true;
+    }
+    return false;
+  },
   addInventoryLog(l: InventoryLog) { db.inventoryLogs.push(l); saveDb(); },
 };
 

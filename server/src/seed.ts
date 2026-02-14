@@ -51,41 +51,32 @@ export function ensureCatalogSeed(): void {
 
 /**
  * 初始化开业活动定价方案（当 pricing.plans 为空时）。
- * 方案来源：用户提供的“开业暂定价目表”。
+ * 方案来源：历史版本的“开业暂定价目表”（现已改为“可自由配置的定价方案”）。
  */
 export function ensurePricingSeed(): void {
   const p = storage.pricing as any;
   const hasPlans = Array.isArray(p?.plans) && p.plans.length > 0;
   const plansExisting: PricingPlan[] = hasPlans ? (p.plans as PricingPlan[]) : [];
   const plans: PricingPlan[] = [
-    // 自用（固定每包 80 元，常见 15/30 次）
-    { id: nanoid(), group: 'self', name: '自用15次', setPrice: 1200, packCount: 15, perPackPrice: 80, remark: '自用固定¥80/包' },
-    { id: nanoid(), group: 'self', name: '自用30次', setPrice: 2400, packCount: 30, perPackPrice: 80, remark: '自用固定¥80/包' },
-    // 分销（三档）
-    { id: nanoid(), group: 'distrib', name: '分销一', setPrice: 14280, packCount: 45, perPackPrice: 317, remark: '分销首次拿货3个15次疗程套装；按零售价7折' },
-    { id: nanoid(), group: 'distrib', name: '分销二', setPrice: 20400, packCount: 75, perPackPrice: 272, remark: '拿货5个15次疗程套装；按零售价6折' },
-    { id: nanoid(), group: 'distrib', name: '分销三', setPrice: 102000, packCount: 450, perPackPrice: 227, remark: '拿货30个15次疗程套装；按零售价5折' },
-    // 零售（两档） + VIP
-    { id: nanoid(), group: 'retail', name: 'VIP', setPrice: 2000, packCount: 15, perPackPrice: 133, remark: '亲朋体验15次疗程套装2000元15包' },
-    { id: nanoid(), group: 'retail', name: '零售一', setPrice: 6800, packCount: 15, perPackPrice: 453, remark: '零售15次疗程套装6800元15包' },
-    { id: nanoid(), group: 'retail', name: '零售二', setPrice: 12300, packCount: 30, perPackPrice: 410, remark: '零售30次疗程套装12300元30包' },
-    // 临时活动（三档） + 一次性活动
-    { id: nanoid(), group: 'temp', name: '临时活动一', setPrice: 999, packCount: 3, perPackPrice: 333, remark: '开业活动999元3次疗程' },
-    { id: nanoid(), group: 'temp', name: '临时活动二', setPrice: 5780, packCount: 15, perPackPrice: 385, remark: '好友推荐8.5折（小程序登记推荐人）' },
-    { id: nanoid(), group: 'temp', name: '临时活动三', setPrice: 1088, packCount: 3, perPackPrice: 363, remark: '3次体验8折优惠券' },
-    { id: nanoid(), group: 'temp', name: '一次性活动', setPrice: 0, packCount: 15, perPackPrice: 0, remark: '三位被试15次疗程免费' },
+    // 说明：自 v0.1.0 起，默认不再内置“开业活动方案”。
+    // 原因：不同门店/时期的营销策略差异大，内置固定方案反而限制灵活配置；
+    // 操作者可在“定价策略”页自由新增/修改/删除方案。
   ];
+
+  // 迁移：如果历史数据中存在“开业一次性活动”方案，则自动移除。
+  // 仅针对明确的 name 精确匹配，避免误删用户自定义方案。
   if (hasPlans) {
-    // 若已存在方案，仅在缺少自用分组时补齐自用两档，避免覆盖现有自定义方案
-    const hasSelf = plansExisting.some(pl => pl.group === 'self');
-    if (!hasSelf) {
-      const toAdd = plans.filter(pl => pl.group === 'self');
-      const next = { ...p, plans: [...plansExisting, ...toAdd] } as any;
+    const removed = plansExisting.filter(pl => String(pl.name) === '一次性活动');
+    if (removed.length) {
+      const next = { ...p, plans: plansExisting.filter(pl => String(pl.name) !== '一次性活动') } as any;
       storage.setPricing(next);
     }
+    // 若已存在方案，不进行覆盖
     return;
   }
-  const next = { ...p, plans } as any;
+
+  // 新安装：默认不注入任何方案，保持空列表。
+  const next = { ...p, plans: [] } as any;
   storage.setPricing(next);
 }
 

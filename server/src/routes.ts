@@ -5,6 +5,7 @@ import { authMiddleware, requireRole, signToken } from './auth';
 import { storage, backupManager, DATA_DIR, DB_FILE, loadDb } from './storage';
 import { Material, Order, OrderType, Product, ProductRecipeItem, Purchase, PricingPlan, PricingPlanGroup } from './types';
 import { Errors } from './errors';
+import { logger } from './logger';
 import { existsSync, copyFileSync, createReadStream, writeFileSync } from 'fs';
 import { join } from 'path';
 import { ensurePricingSeed } from './seed';
@@ -13,6 +14,16 @@ export const router = Router();
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/**
+ * 将手机号做脱敏处理，便于写安全审计日志同时避免泄漏隐私。
+ * 示例：13800000000 -> 138****0000
+ */
+function maskPhone(phone: string): string {
+  const p = String(phone || '');
+  if (p.length < 7) return p ? `${p[0]}***` : '';
+  return `${p.slice(0, 3)}****${p.slice(-4)}`;
 }
 
 function toDateKey(iso: string): string {
@@ -34,6 +45,57 @@ router.post('/auth/login', (req, res) => {
   }
   const token = signToken({ id: user.id, role: user.role, name: user.name });
   return res.json({ token, user: { id: user.id, role: user.role, name: user.name } });
+});
+
+/**
+ * 找回密码：使用“重置口令”直接重设密码。
+ *
+ * 设计原因与方式：
+ * - 该系统是“店内本地/局域网工具”，通常没有短信/邮箱能力；
+ * - 直接放开“输入手机号即可重置”会导致任何人可接管账号，风险不可接受；
+ * - 因此采用环境变量 `PASSWORD_RESET_KEY` 作为“店长持有”的线下重置口令：
+ *   - 只有知道该口令的人才能重置指定手机号的密码；
+ *   - 口令不落库，便于随时更换并降低泄漏影响面。
+ *
+ * 请求体：{ phone, resetKey, newPassword }
+ */
+router.post('/auth/reset-password', (req, res) => {
+  const configuredKey = process.env.PASSWORD_RESET_KEY;
+  if (!configuredKey) {
+    return res
+      .status(501)
+      .json(Errors.validation('服务端未配置 PASSWORD_RESET_KEY，暂不可使用找回密码功能'));
+  }
+
+  const { phone, resetKey, newPassword } = req.body || {};
+  const phoneStr = String(phone || '').trim();
+  const keyStr = String(resetKey || '');
+  const pwdStr = String(newPassword || '');
+
+  if (!phoneStr || !keyStr || !pwdStr) {
+    return res.status(400).json(Errors.validation('phone/resetKey/newPassword 必填'));
+  }
+  if (pwdStr.length < 6) {
+    return res.status(400).json(Errors.validation('新密码长度至少 6 位'));
+  }
+  if (keyStr !== configuredKey) {
+    logger.warn('auth:reset-password:denied', { phone: maskPhone(phoneStr) });
+    return res.status(403).json(Errors.forbidden('重置口令不正确'));
+  }
+
+  const user = storage.users.find(u => u.phone === phoneStr);
+  if (!user) {
+    logger.warn('auth:reset-password:not-found', { phone: maskPhone(phoneStr) });
+    return res.status(404).json(Errors.notFound('手机号不存在'));
+  }
+  if (user.status !== 'active') {
+    return res.status(403).json(Errors.forbidden('账号已停用'));
+  }
+
+  user.passwordHash = bcrypt.hashSync(pwdStr, 10);
+  storage.upsertUser(user);
+  logger.info('auth:reset-password:ok', { phone: maskPhone(phoneStr), userId: user.id, role: user.role });
+  return res.json({ ok: true });
 });
 
 router.get('/auth/me', authMiddleware, (req, res) => {
@@ -385,6 +447,65 @@ router.post('/purchases/batch', authMiddleware, (req, res) => {
     purchases.push(purchase);
   }
   return res.json({ ok: true, count: purchases.length, purchases });
+});
+
+/**
+ * 撤回一条“原料进货入库”记录（仅店长）。
+ *
+ * 设计说明：
+ * - 撤回本质是“写一条对冲操作”，而不是静默删流水：
+ *   - 数据层删除 purchases 记录用于避免报表重复统计；
+ *   - 但库存流水保持审计可追溯，因此使用 refType='adjust' 写入一条 out 对冲流水；
+ * - 为避免出现负库存：要求当前原料库存 >= 当次入库克数，否则拒绝撤回并提示原因。
+ */
+router.post('/purchases/:id/revoke', authMiddleware, requireRole('owner'), (req, res) => {
+  const id = String(req.params.id || '');
+  const purchase = storage.purchases.find(p => p.id === id);
+  if (!purchase) return res.status(404).json(Errors.notFound('进货记录不存在'));
+  const mat = storage.materials.find(m => m.id === purchase.materialId);
+  if (!mat) return res.status(404).json(Errors.notFound('原料不存在'));
+
+  const grams = Number(purchase.grams || 0);
+  if (!(grams > 0)) return res.status(400).json(Errors.validation('进货记录 grams 非法'));
+  if (mat.stock < grams) {
+    return res.status(400).json(
+      Errors.validation('当前库存不足，无法撤回该进货记录（可能已被消耗）', {
+        materialId: mat.id,
+        need: grams,
+        stock: mat.stock,
+      }),
+    );
+  }
+
+  // 1) 回滚库存
+  mat.stock -= grams;
+  storage.upsertMaterial(mat);
+
+  // 2) 删除 purchase 记录，避免后续报表/列表重复统计
+  storage.removePurchase(id);
+
+  // 3) 写入对冲流水：用 adjust 记录撤回动作，保留审计轨迹
+  const operator = String((req as any).user?.name || purchase.operator || '');
+  storage.addInventoryLog({
+    id: nanoid(),
+    kind: 'out',
+    materialId: mat.id,
+    grams,
+    refType: 'adjust',
+    refId: `revoke-purchase-${id}`,
+    operator,
+    createdAt: nowIso(),
+  });
+
+  logger.warn('purchase:revoke', {
+    purchaseId: id,
+    materialId: mat.id,
+    grams,
+    operator,
+    stockAfter: mat.stock,
+  });
+
+  return res.json({ ok: true, purchaseId: id, materialId: mat.id, grams, stock: mat.stock });
 });
 
 /**

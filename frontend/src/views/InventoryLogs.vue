@@ -38,6 +38,19 @@
       <el-table-column label="操作人">
         <template #default="{ row }">{{ row.operator || row.person || '—' }}</template>
       </el-table-column>
+      <el-table-column v-if="isOwner" label="操作" width="140">
+        <template #default="{ row }">
+          <el-button
+            v-if="canRevokePurchase(row)"
+            size="small"
+            type="danger"
+            @click="revokePurchase(row)"
+          >
+            撤回进货
+          </el-button>
+          <span v-else>—</span>
+        </template>
+      </el-table-column>
     </el-table>
     <div class="pager">
       <el-pagination layout="prev, pager, next" :total="total" :current-page="page" :page-size="pageSize" @current-change="onPage" />
@@ -48,6 +61,8 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import api from '../api/client'
+import { useAuthStore } from '../stores/auth'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const rows = reactive<any[]>([])
 const total = ref(0)
@@ -56,6 +71,8 @@ const pageSize = ref(20)
 const kind = ref('')
 const materialId = ref('')
 const range = ref<[Date, Date] | null>(null)
+const auth = useAuthStore()
+const isOwner = auth.user?.role === 'owner'
 
 /**
  * 将 ISO 时间串格式化为“年-月-日 时:分:秒”形式，便于业务人员在手机上快速理解。
@@ -85,6 +102,34 @@ async function load() {
 }
 
 function onPage(p:number) { page.value = p; load() }
+
+/**
+ * 是否允许在流水中撤回“进货入库”。
+ * 策略：
+ * - 仅允许撤回 refType='purchase' 且 kind='in' 的流水；
+ * - 需要后端校验库存是否足够回滚（若已消耗则拒绝撤回）。
+ */
+function canRevokePurchase(row:any): boolean {
+  return !!(row && row.refType === 'purchase' && row.kind === 'in' && row.refId && row.materialId && row.grams)
+}
+
+async function revokePurchase(row:any) {
+  if (!canRevokePurchase(row)) return
+  const ok = await ElMessageBox.confirm(
+    `确认撤回该条进货入库？\n\n注意：若该原料库存已被消耗导致当前库存不足，系统将拒绝撤回。`,
+    '撤回进货',
+    { type: 'warning', confirmButtonText: '确认撤回', cancelButtonText: '取消' },
+  ).then(() => true).catch(() => false)
+  if (!ok) return
+  try {
+    await api.post(`/purchases/${row.refId}/revoke`)
+    ElMessage.success('已撤回进货并回滚库存')
+    await load()
+  } catch (e:any) {
+    const msg = e?.response?.data?.error?.message || e?.message || '撤回失败'
+    ElMessage.error(msg)
+  }
+}
 
 load()
 </script>

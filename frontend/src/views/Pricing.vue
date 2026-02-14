@@ -16,13 +16,13 @@
           <el-input-number v-model="form.event" :min="0.1" :max="10" :step="0.1" />
         </el-form-item>
       </el-form>
-      <el-divider>开业活动方案</el-divider>
+      <el-divider>定价方案（可自由配置）</el-divider>
       <el-tabs v-model="activeTab">
-        <el-tab-pane label="自用（固定80/包）" name="self">
+        <el-tab-pane label="自用" name="self">
           <div class="actions" style="margin-bottom:8px;">
             <el-button size="small" @click="addPlan('self')">新增自用方案</el-button>
           </div>
-          <el-alert type="info" show-icon title="自用方案建议按80元/包计算，可设置15/30包等固定套装" style="margin-bottom:8px;" />
+          <el-alert type="info" show-icon title="可配置不同套装与单包价，取货登记时可按方案自动计算应收" style="margin-bottom:8px;" />
           <el-table :data="plansSelf" size="small">
             <el-table-column prop="name" label="名称" width="120" />
             <el-table-column label="套装价格(元)" width="150">
@@ -50,7 +50,7 @@
         </el-tab-pane>
         <el-tab-pane label="VIP" name="vip">
           <div class="actions" style="margin-bottom:8px;">
-            <el-button size="small" @click="ensureVip">{{ plansVip.length ? '重置为VIP' : '创建VIP' }}</el-button>
+            <el-button size="small" @click="addPlan('vip')">新增 VIP 方案</el-button>
           </div>
           <el-table :data="plansVip" size="small">
             <el-table-column prop="name" label="名称" width="100" />
@@ -70,6 +70,11 @@
               </template>
             </el-table-column>
             <el-table-column prop="remark" label="备注" />
+            <el-table-column label="操作" width="120">
+              <template #default="{ $index }">
+                <el-button size="small" type="danger" @click="removePlan('vip', $index)">删除</el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </el-tab-pane>
         <el-tab-pane label="分销（三档）" name="distrib">
@@ -130,7 +135,7 @@
             </el-table-column>
           </el-table>
         </el-tab-pane>
-        <el-tab-pane label="临时活动（三档）" name="temp">
+        <el-tab-pane label="临时活动" name="temp">
           <div class="actions" style="margin-bottom:8px;">
             <el-button size="small" @click="addPlan('temp')">新增方案</el-button>
           </div>
@@ -173,36 +178,35 @@ import { reactive, ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api/client'
 
-type Plan = { id?: string; group: 'self'|'distrib'|'retail'|'temp'|'special'; name: string; setPrice: number; packCount: number; perPackPrice?: number; remark?: string }
+type Plan = { id?: string; group: 'self'|'vip'|'distrib'|'retail'|'temp'|'special'; name: string; setPrice: number; packCount: number; perPackPrice?: number; remark?: string }
 const form = reactive({ self: 1, vip: 0.8, distrib: 0.7, event: 1, plans: [] as Plan[] })
 const saving = ref(false)
-const activeTab = ref('self')
+const activeTab = ref<'self'|'vip'|'distrib'|'retail'|'temp'>('self')
 
 const plansSelf = computed(() => form.plans.filter(p => p.group==='self'))
-const plansVip = computed(() => form.plans.filter(p => p.group==='special' && p.name==='VIP'))
+// 兼容历史：VIP 可能被存为 group='special' 或 retail:VIP（服务端读取时会映射为 vip；此处同时兼容本地编辑态）
+const plansVip = computed(() => form.plans.filter(p => p.group==='vip' || (p.group==='special' && p.name==='VIP') || (p.group==='retail' && p.name==='VIP')))
 const plansDistrib = computed(() => form.plans.filter(p => p.group==='distrib'))
 const plansRetail = computed(() => form.plans.filter(p => p.group==='retail' && p.name!=='VIP'))
 const plansTemp = computed(() => form.plans.filter(p => p.group==='temp'))
 
-function addPlan(group:'self'|'distrib'|'retail'|'temp') {
+function addPlan(group:'self'|'vip'|'distrib'|'retail'|'temp') {
   const seq = (form.plans.filter(p => p.group===group).length + 1)
-  const name = group==='self' ? `自用${['一','二','三','四','五'][seq-1]||seq}` : group==='distrib' ? `分销${['一','二','三','四','五'][seq-1]||seq}` : group==='retail' ? `零售${['一','二','三','四','五'][seq-1]||seq}` : `临时活动${['一','二','三','四','五'][seq-1]||seq}`
+  const name =
+    group==='self' ? `自用${['一','二','三','四','五'][seq-1]||seq}`
+    : group==='vip' ? `VIP${['一','二','三','四','五'][seq-1]||seq}`
+    : group==='distrib' ? `分销${['一','二','三','四','五'][seq-1]||seq}`
+    : group==='retail' ? `零售${['一','二','三','四','五'][seq-1]||seq}`
+    : `临时活动${['一','二','三','四','五'][seq-1]||seq}`
   form.plans.push({ group, name, setPrice: 0, packCount: 0, remark: '' })
 }
 
-function removePlan(group:'self'|'distrib'|'retail'|'temp', index:number) {
-  const list = form.plans.filter(p => p.group===group)
+function removePlan(group:'self'|'vip'|'distrib'|'retail'|'temp', index:number) {
+  const list = group === 'vip' ? plansVip.value : form.plans.filter(p => p.group===group)
   const target = list[index]
   if (!target) return
   const i = form.plans.indexOf(target)
   if (i>=0) form.plans.splice(i,1)
-}
-
-function ensureVip() {
-  const exists = form.plans.find(p => p.group==='special' && p.name==='VIP')
-  if (!exists) {
-    form.plans.push({ group:'special', name:'VIP', setPrice: 2000, packCount: 15, remark:'亲朋体验15次疗程套装2000元15包' })
-  }
 }
 
 async function load() {
