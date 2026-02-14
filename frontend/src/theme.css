@@ -116,3 +116,78 @@ body { color: var(--qs-text); background: var(--qs-surface-muted); }
     padding: 6px 8px;
   }
 }
+
+/* ============================
+   PWA 触屏设备专属优化（闺蜜机等安卓大屏设备）
+   ============================ */
+
+/* 1. 禁止 iOS/Android 浏览器长按弹出菜单、禁止选中文本（操作区域） */
+.tabbar, .topbar, .mobile-menu-panel {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 2. 触摸点击区域放大：最小 44px 符合 WCAG 触摸目标尺寸 */
+@media (pointer: coarse) {
+  /* 触屏设备上按钮最小高度 44px */
+  .el-button {
+    min-height: 44px;
+    min-width: 44px;
+    font-size: 14px;
+  }
+  /* 表格操作列按钮间距加大，防止误触 */
+  .el-table .el-button + .el-button {
+    margin-left: 10px;
+  }
+  /* 输入控件增大 */
+  .el-input__wrapper,
+  .el-select .el-select__wrapper {
+    min-height: 40px;
+    padding: 4px 10px;
+  }
+  /* 移动菜单项增高 */
+  .mobile-menu-item {
+    padding: 14px 16px;
+    font-size: 16px;
+  }
+  /* 分页按钮放大 */
+  .el-pagination {
+    --el-pagination-button-height: 36px;
+  }
+  /* 弹窗底部按钮间距加大 */
+  .el-dialog__footer .el-button + .el-button {
+    margin-left: 12px;
+  }
+}
+
+/* 3. PWA standalone 模式下的安全区域适配（刘海屏 / 挖孔屏） */
+@media (display-mode: standalone) {
+  .topbar {
+    padding-top: max(8px, env(safe-area-inset-top));
+  }
+  .tabbar {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  /* PWA 模式下隐藏不需要的浏览器相关 UI 提示 */
+  .layout {
+    padding-bottom: max(56px, calc(56px + env(safe-area-inset-bottom)));
+  }
+}
+
+/* 4. 平滑滚动体验 */
+html {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 5. 防止双击缩放（PWA 全屏下不需要缩放） */
+* {
+  touch-action: manipulation;
+}
+
+/* 6. 拖拽和滑动优化：表格横向滚动更顺滑 */
+.el-table__body-wrapper {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}

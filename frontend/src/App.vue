@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import Layout from './components/Layout.vue'
+import ReloadPrompt from './components/ReloadPrompt.vue'
 </script>
 
 <template>
   <Layout />
-  
+  <!-- PWA 更新提示：新版本就绪时在底部弹出通知 -->
+  <ReloadPrompt />
 </template>
 
 <style>
