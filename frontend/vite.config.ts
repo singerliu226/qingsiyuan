@@ -5,8 +5,12 @@ import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// GitHub Pages 部署时使用子路径 /qingsiyuan/
+const base = process.env.GITHUB_ACTIONS ? '/qingsiyuan/' : '/'
+
 // https://vitejs.dev/config/
 export default defineConfig({
+  base,
   plugins: [
     vue(),
     AutoImport({
@@ -54,8 +58,8 @@ export default defineConfig({
         background_color: '#f7f8fa',
         display: 'standalone',
         orientation: 'portrait',
-        scope: '/',
-        start_url: '/',
+        scope: base,
+        start_url: base,
         categories: ['business', 'productivity'],
         icons: [
           {

@@ -17,7 +17,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/403', name: 'forbidden', component: () => import('../views/Forbidden.vue') },
 ]
 
-const router = createRouter({ history: createWebHistory(), routes })
+const router = createRouter({ history: createWebHistory(import.meta.env.BASE_URL), routes })
 
 router.beforeEach(async (to) => {
   // 在路由守卫中显式使用全局 pinia 实例，避免白屏于早期守卫阶段
