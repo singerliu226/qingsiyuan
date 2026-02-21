@@ -11,10 +11,18 @@
           <el-table-column prop="phone" label="手机号" />
           <el-table-column prop="role" label="角色" />
           <el-table-column prop="status" label="状态" />
-          <el-table-column label="操作" width="240">
+          <el-table-column label="操作" width="320">
             <template #default="{ row }">
               <el-button size="small" @click="openEdit(row)">编辑</el-button>
               <el-button size="small" @click="resetPwd(row)">重置密码</el-button>
+              <el-button
+                size="small"
+                type="danger"
+                :disabled="row.id === auth.user?.id"
+                @click="deleteUser(row)"
+              >
+                删除
+              </el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -105,7 +113,7 @@
 
 <script setup lang="ts">
 import { reactive, ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api/client'
 import { useAuthStore } from '../stores/auth'
 
@@ -145,6 +153,29 @@ async function saveUser() {
 async function resetPwd(row:any) {
   await api.patch(`/users/${row.id}`, { password: '123456' })
   ElMessage.success('已重置为 123456')
+}
+
+async function deleteUser(row: any) {
+  if (auth.user?.role !== 'owner') return
+  if (!row?.id) return
+  if (row.id === auth.user?.id) {
+    ElMessage.warning('不能删除当前登录账号')
+    return
+  }
+  const ok = await ElMessageBox.confirm(
+    `确认删除账号「${row.name || ''} ${row.phone || ''}」？\n\n删除后不可恢复。若该账号是最后一个店长，系统将拒绝删除。`,
+    '删除账号',
+    { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' },
+  ).then(() => true).catch(() => false)
+  if (!ok) return
+  try {
+    await api.post(`/users/${row.id}/delete`)
+    ElMessage.success('已删除')
+    await loadUsers()
+  } catch (e: any) {
+    const msg = e?.response?.data?.error?.message || e?.message || '删除失败'
+    ElMessage.error(msg)
+  }
 }
 
 async function changePass() {

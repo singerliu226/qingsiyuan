@@ -72,6 +72,22 @@ export const storage = {
     if (i >= 0) db.users[i] = u; else db.users.push(u);
     saveDb();
   },
+  /**
+   * 删除用户（物理删除）。
+   * 设计说明：
+   * - 仅提供最小的数据操作：按 id 从 users 数组移除并落盘；
+   * - “权限/安全校验”（如禁止删除最后一个店长、禁止删自己）应在路由层完成；
+   * - 不在 storage 层记录审计，避免出现“误调用即删除”的隐式副作用。
+   */
+  removeUser(id: string) {
+    const i = db.users.findIndex(u => u.id === id);
+    if (i >= 0) {
+      db.users.splice(i, 1);
+      saveDb();
+      return true;
+    }
+    return false;
+  },
   upsertMaterial(m: Material) {
     const i = db.materials.findIndex(x => x.id === m.id);
     if (i >= 0) db.materials[i] = m; else db.materials.push(m);

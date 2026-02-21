@@ -160,6 +160,47 @@ router.patch('/users/:id', authMiddleware, requireRole('owner'), (req, res) => {
   return res.json({ id: user.id, name: user.name, phone: user.phone, role: user.role, status: user.status });
 });
 
+/**
+ * 删除用户（仅店长）。
+ *
+ * 设计说明：
+ * - 物理删除用于清理不再使用的账号，避免“停用但列表越来越长”；
+ * - 安全保护：
+ *   - 禁止删除当前登录用户（避免误操作把自己踢出且无人可管理）；
+ *   - 禁止删除“最后一个店长”（系统必须至少保留一个 owner 才能继续管理）。
+ */
+router.post('/users/:id/delete', authMiddleware, requireRole('owner'), (req, res) => {
+  const id = String(req.params.id || '');
+  const actor = (req as any).user as { id?: string; name?: string } | undefined;
+  if (!id) return res.status(400).json(Errors.validation('id 非法'));
+  if (actor?.id && actor.id === id) {
+    return res.status(400).json(Errors.validation('不能删除当前登录账号'));
+  }
+
+  const target = storage.users.find(u => u.id === id);
+  if (!target) return res.status(404).json(Errors.notFound('用户不存在'));
+
+  if (target.role === 'owner') {
+    const owners = storage.users.filter(u => u.role === 'owner' && u.id !== id);
+    if (owners.length === 0) {
+      return res.status(400).json(Errors.validation('不能删除最后一个店长账号'));
+    }
+  }
+
+  const ok = storage.removeUser(id);
+  if (!ok) return res.status(404).json(Errors.notFound('用户不存在'));
+
+  logger.warn('user:delete', {
+    actorId: actor?.id,
+    actorName: actor?.name,
+    targetId: id,
+    targetPhone: maskPhone(target.phone),
+    targetRole: target.role,
+  });
+
+  return res.json({ ok: true });
+});
+
 // ===== Materials =====
 router.get('/materials', authMiddleware, (_req, res) => {
   res.json(storage.materials);

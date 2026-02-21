@@ -137,12 +137,20 @@ async function handlePost(url: string, data?: unknown): Promise<unknown> {
   if (url === '/users') {
     return authService.createUser(body as { name: string; phone: string; role: string; password?: string });
   }
+  // User delete
+  let m = matchUrl(url, /^\/users\/(.+)\/delete$/);
+  if (m) {
+    const session = authService.getSession();
+    if (!session) throw makeAdapterError(401, 'UNAUTH', 'Missing token');
+    await authService.deleteUser(m[1]!, session.id);
+    return { ok: true };
+  }
 
   // Materials
   if (url === '/materials') return materialService.create(body);
 
   // Material decrease
-  let m = matchUrl(url, /^\/materials\/(.+)\/decrease$/);
+  m = matchUrl(url, /^\/materials\/(.+)\/decrease$/);
   if (m) {
     const session = authService.getSession();
     return materialService.decrease(m[1]!, Number(body.grams || 0), String(body.operator || session?.name || ''));

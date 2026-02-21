@@ -134,6 +134,28 @@ export async function updateUser(id: string, data: { name?: string; phone?: stri
   return { id: user.id, name: user.name, phone: user.phone, role: user.role, status: user.status };
 }
 
+/**
+ * 删除用户（离线模式）。
+ *
+ * 设计说明：
+ * - 用于清理不再使用的账号；
+ * - 与服务端逻辑保持一致，增加两条安全保护：
+ *   - 禁止删除当前登录用户（避免误删导致无人可管理）；
+ *   - 禁止删除最后一个店长账号（系统必须至少保留一个 owner）。
+ */
+export async function deleteUser(targetId: string, actorId: string): Promise<void> {
+  if (!targetId) throw makeError(400, 'VALIDATION', 'id 非法');
+  if (actorId && targetId === actorId) throw makeError(400, 'VALIDATION', '不能删除当前登录账号');
+  const target = await db.users.get(targetId);
+  if (!target) throw makeError(404, 'NOT_FOUND', '用户不存在');
+  if (target.role === 'owner') {
+    const owners = await db.users.where('role').equals('owner').toArray();
+    const others = owners.filter(o => o.id !== targetId);
+    if (others.length === 0) throw makeError(400, 'VALIDATION', '不能删除最后一个店长账号');
+  }
+  await db.users.delete(targetId);
+}
+
 // ===================== 工具函数 =====================
 
 function uid(): string {
