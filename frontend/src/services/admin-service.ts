@@ -16,7 +16,7 @@ export async function getPricing(): Promise<PricingConfig> {
   const p = await db.pricing.get('default');
   if (!p) {
     // 若不存在（不应发生），返回默认值
-    return { id: 'default', self: 1, vip: 0.8, distrib: 0.7, event: 1, plans: [] };
+    return { id: 'default', self: 0, vip: 0.8, temp: 1, plans: [] };
   }
   return p;
 }
@@ -26,10 +26,10 @@ export async function updatePricing(body: Record<string, unknown>): Promise<Pric
   const p = await getPricing();
   const next = { ...p } as PricingConfig;
 
-  for (const k of ['self', 'vip', 'distrib', 'event'] as const) {
+  for (const k of ['self', 'vip', 'temp'] as const) {
     if (body[k] !== undefined) {
       const v = Number(body[k]);
-      if (!isFinite(v) || v <= 0) throw makeError(400, 'VALIDATION', `${k} 折扣需为正数`);
+      if (!isFinite(v) || v < 0) throw makeError(400, 'VALIDATION', `${k} 折扣需为非负数`);
       next[k] = v;
     }
   }
@@ -39,20 +39,15 @@ export async function updatePricing(body: Record<string, unknown>): Promise<Pric
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const it of body.plans as Array<any>) {
       if (!it || !it.group || !it.name) throw makeError(400, 'VALIDATION', 'plans 不合法');
-      const setPrice = Number(it.setPrice || 0);
-      const packCount = Number(it.packCount || 0);
-      const perPackInput = it.perPackPrice !== undefined ? Number(it.perPackPrice) : undefined;
-      if (!(setPrice >= 0) || !(packCount >= 0)) throw makeError(400, 'VALIDATION', 'setPrice/packCount 非法');
-      const perPackPrice = perPackInput !== undefined && perPackInput >= 0
-        ? Math.round(perPackInput)
-        : (packCount > 0 ? Number((setPrice / packCount).toFixed(0)) : 0);
+      const group = String(it.group) as PricingPlan['group'];
+      if (!['self', 'vip', 'temp'].includes(group)) throw makeError(400, 'VALIDATION', 'group 非法');
+      const discount = Number(it.discount);
+      if (!isFinite(discount) || discount < 0) throw makeError(400, 'VALIDATION', 'discount 非法');
       plans.push({
         id: (it.id as string) || uid(),
-        group: it.group as PricingPlan['group'],
+        group,
         name: it.name as string,
-        setPrice,
-        packCount,
-        perPackPrice,
+        discount,
         remark: it.remark as string | undefined,
       });
     }
@@ -70,11 +65,7 @@ export async function updatePricing(body: Record<string, unknown>): Promise<Pric
 export async function getPlans(): Promise<{ plans: PricingPlan[] }> {
   const pricing = await getPricing();
   const plansRaw = Array.isArray(pricing.plans) ? pricing.plans : [];
-  const plans = plansRaw.map(p =>
-    (p.name === 'VIP' || (p as any).group === 'special') // eslint-disable-line @typescript-eslint/no-explicit-any
-      ? { ...p, group: 'vip' as PricingPlan['group'] }
-      : p,
-  );
+  const plans = plansRaw.filter(p => ['self', 'vip', 'temp'].includes(String((p as any).group)));
   return { plans };
 }
 
@@ -94,8 +85,8 @@ export async function exportDatabase(): Promise<string> {
   const pricingRow = await db.pricing.get('default');
   // 导出时去除 IndexedDB 的 id 主键，与服务端格式对齐
   const pricing = pricingRow
-    ? { self: pricingRow.self, vip: pricingRow.vip, distrib: pricingRow.distrib, event: pricingRow.event, plans: pricingRow.plans || [] }
-    : { self: 1, vip: 0.8, distrib: 0.7, event: 1, plans: [] };
+    ? { self: pricingRow.self, vip: pricingRow.vip, temp: pricingRow.temp, plans: pricingRow.plans || [] }
+    : { self: 0, vip: 0.8, temp: 1, plans: [] };
 
   const data: DbExportShape = { users, materials, products, orders, purchases, inventoryLogs, pricing };
   return JSON.stringify(data, null, 2);
@@ -162,8 +153,11 @@ export async function importDatabase(jsonContent: string): Promise<void> {
     if (parsed.inventoryLogs?.length) await db.inventoryLogs.bulkAdd(parsed.inventoryLogs);
 
     // pricing：服务端格式没有 id 字段，需要补充
-    const pricing = parsed.pricing || { self: 1, vip: 0.8, distrib: 0.7, event: 1, plans: [] };
-    await db.pricing.add({ id: 'default', ...pricing } as PricingConfig);
+    const pricing = parsed.pricing || { self: 0, vip: 0.8, temp: 1, plans: [] };
+    // 兼容旧备份：若存在 event 字段则映射到 temp；并清空旧方案（清空重做）
+    const temp = (pricing as any).temp !== undefined ? Number((pricing as any).temp) : ((pricing as any).event !== undefined ? Number((pricing as any).event) : 1);
+    const self = (pricing as any).self !== undefined ? Number((pricing as any).self) : 0;
+    await db.pricing.add({ id: 'default', self: isFinite(self) ? self : 0, vip: Number((pricing as any).vip || 0.8), temp: isFinite(temp) ? temp : 1, plans: [] } as PricingConfig);
   });
 }
 

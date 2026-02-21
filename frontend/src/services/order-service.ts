@@ -28,7 +28,7 @@ export async function list(): Promise<Order[]> {
  * 1. 先扣减成品库存 Product.stock
  * 2. 成品不足时按 Product.recipe 扣减原料
  *
- * 应收计算：优先使用定价方案的 perPackPrice，否则 priceBase * discount
+ * 应收计算：优先使用定价方案的 discount，否则 priceBase * 默认折扣
  */
 export async function create(data: {
   type?: string;
@@ -61,13 +61,12 @@ export async function create(data: {
   }
 
   // 计算应收
-  const perPackFromPlan = await resolvePerPackPrice(
+  const discount = await resolveDiscount(
     data.pricingGroup as PricingPlanGroup | 'vip' | undefined,
     data.pricingPlanId,
+    t,
   );
-  const unit = perPackFromPlan !== undefined
-    ? perPackFromPlan
-    : Number((product.priceBase * discountFor(t)).toFixed(2));
+  const unit = Number((product.priceBase * discount).toFixed(2));
   const receivable = Number((unit * q).toFixed(2));
 
   const orderId = uid();
@@ -129,6 +128,7 @@ export async function create(data: {
     pricingGroup: data.pricingGroup as Order['pricingGroup'],
     pricingPlanId: data.pricingPlanId,
     perPackPrice: unit,
+    discountApplied: discount,
     remark: data.remark ? String(data.remark) : undefined,
   };
   await db.orders.add(order);
@@ -201,7 +201,7 @@ export async function validate(data: {
   qty?: number;
   pricingGroup?: string;
   pricingPlanId?: string;
-}): Promise<{ receivable: number; perPackPrice: number; usedFinished: number; usedFromRaw: number }> {
+}): Promise<{ receivable: number; perPackPrice: number; discountApplied: number; usedFinished: number; usedFromRaw: number }> {
   const t = (data.type || 'retail') as OrderType;
   const validTypes = ['self', 'vip', 'distrib', 'retail', 'temp', 'event', 'test', 'gift'];
   if (!validTypes.includes(t)) throw makeError(400, 'VALIDATION', 'type 非法');
@@ -220,16 +220,15 @@ export async function validate(data: {
     await checkRawMaterialStock(product.recipe, needFromRaw);
   }
 
-  const perPackFromPlan = await resolvePerPackPrice(
+  const discount = await resolveDiscount(
     data.pricingGroup as PricingPlanGroup | 'vip' | undefined,
     data.pricingPlanId,
+    t,
   );
-  const unit = perPackFromPlan !== undefined
-    ? perPackFromPlan
-    : Number((product.priceBase * discountFor(t)).toFixed(2));
+  const unit = Number((product.priceBase * discount).toFixed(2));
   const receivable = Number((unit * q).toFixed(2));
 
-  return { receivable, perPackPrice: unit, usedFinished: useFinished, usedFromRaw: needFromRaw };
+  return { receivable, perPackPrice: unit, discountApplied: discount, usedFinished: useFinished, usedFromRaw: needFromRaw };
 }
 
 // ===================== 内部工具 =====================
@@ -246,47 +245,43 @@ async function checkRawMaterialStock(recipe: Array<{ materialId: string; grams: 
   if (lacks.length) throw makeError(400, 'INSUFFICIENT_STOCK', '库存不足', lacks);
 }
 
-/** 根据订单类型获取折扣系数 */
-function discountFor(type: OrderType): number {
-  // 需要从 pricing 表读取，但由于 Dexie 是异步的，这里用同步默认值
-  // 实际折扣在 resolvePerPackPrice 中已处理，此处作为 fallback
-  switch (type) {
-    case 'self': return 1;
-    case 'vip': return 0.8;
-    case 'distrib': return 0.7;
-    case 'retail': return 1;
-    case 'temp': return 1;
-    case 'event': return 1;
-    case 'test': return 1;
-    case 'gift': return 0;
-    default: return 1;
-  }
-}
-
 /**
- * 根据定价方案 ID 或分组查找 perPackPrice。
- * 与服务端 resolvePerPackPrice 逻辑一致。
+ * 根据定价方案 ID 或分组查找 discount。
+ * 与服务端 resolveDiscount 逻辑一致。
  */
-async function resolvePerPackPrice(
+async function resolveDiscount(
   group: PricingPlanGroup | 'vip' | undefined,
   planId: string | undefined,
-): Promise<number | undefined> {
+  type: OrderType,
+): Promise<number> {
   const pricing = await db.pricing.get('default');
   const plans = pricing?.plans || [];
 
   if (planId) {
     const byId = plans.find(p => p.id === planId);
     if (byId) {
-      const price = Number(byId.perPackPrice || 0);
-      return price >= 0 ? price : undefined;
+      const discount = Number((byId as any).discount);
+      return isFinite(discount) && discount >= 0 ? discount : defaultDiscount(group, type, pricing);
     }
   }
   if (group) {
     const byGroup = plans.find(p => p.group === group);
     if (byGroup) {
-      const price = Number(byGroup.perPackPrice || 0);
-      return price >= 0 ? price : undefined;
+      const discount = Number((byGroup as any).discount);
+      return isFinite(discount) && discount >= 0 ? discount : defaultDiscount(group, type, pricing);
     }
   }
-  return undefined;
+  return defaultDiscount(group, type, pricing);
+}
+
+function defaultDiscount(group: PricingPlanGroup | 'vip' | undefined, type: OrderType, pricing: any): number {
+  const g =
+    group ||
+    (type === 'self' ? 'self' : type === 'vip' ? 'vip' : type === 'temp' ? 'temp' : undefined);
+  // “自用/赠送”默认免费：self 缺省为 0（使用者如需收费可在“定价”里调整 self 默认折扣或选择方案）
+  if (g === 'self') return isFinite(Number(pricing?.self)) ? Number(pricing?.self) : 0;
+  if (g === 'vip') return Number(pricing?.vip ?? 1) || 1;
+  if (g === 'temp') return Number(pricing?.temp ?? (pricing?.event ?? 1)) || 1;
+  if (type === 'gift') return 0;
+  return 1;
 }

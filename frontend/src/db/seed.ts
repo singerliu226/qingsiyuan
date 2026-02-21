@@ -107,22 +107,11 @@ async function ensurePricing(): Promise<void> {
 
   const pricing: PricingConfig = {
     id: 'default',
-    self: 1,
+    self: 0,
     vip: 0.8,
-    distrib: 0.7,
-    event: 1,
-    plans: [
-      { id: 'plan-self-15', group: 'self', name: '自用15次', setPrice: 1200, packCount: 15, perPackPrice: 80, remark: '自用固定¥80/包' },
-      { id: 'plan-self-30', group: 'self', name: '自用30次', setPrice: 2400, packCount: 30, perPackPrice: 80, remark: '自用固定¥80/包' },
-      { id: 'plan-distrib-1', group: 'distrib', name: '分销一', setPrice: 14280, packCount: 45, perPackPrice: 317, remark: '首次拿货3×15次疗程套装' },
-      { id: 'plan-distrib-2', group: 'distrib', name: '分销二', setPrice: 20400, packCount: 75, perPackPrice: 272, remark: '拿货5×15次疗程套装' },
-      { id: 'plan-distrib-3', group: 'distrib', name: '分销三', setPrice: 102000, packCount: 450, perPackPrice: 227, remark: '拿货30×15次疗程套装' },
-      { id: 'plan-retail-1', group: 'retail', name: '零售一', setPrice: 6800, packCount: 15, perPackPrice: 453, remark: '15次疗程套装' },
-      { id: 'plan-retail-2', group: 'retail', name: '零售二', setPrice: 12300, packCount: 30, perPackPrice: 410, remark: '30次疗程套装' },
-      { id: 'plan-temp-1', group: 'temp', name: '临时活动一', setPrice: 999, packCount: 3, perPackPrice: 333, remark: '开业活动 999 元 3 次疗程' },
-      { id: 'plan-temp-2', group: 'temp', name: '临时活动二', setPrice: 5780, packCount: 15, perPackPrice: 385, remark: '好友推荐 8.5 折' },
-      { id: 'plan-temp-3', group: 'temp', name: '临时活动三', setPrice: 1088, packCount: 3, perPackPrice: 363, remark: '3 次体验 8 折优惠券' },
-    ],
+    temp: 1,
+    // 简化定价：不注入默认方案，使用者自行在“定价”页面创建折扣方案
+    plans: [],
   };
   await db.pricing.add(pricing);
 }

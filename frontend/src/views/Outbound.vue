@@ -13,22 +13,22 @@
         <el-form label-width="80px">
           <el-form-item label="类型">
             <el-select v-model="type" placeholder="选择取货类型" @change="onTypeChange">
-              <el-option label="自用" value="self" />
-              <el-option label="零售" value="retail" />
+              <el-option label="自用/赠送" value="self" />
               <el-option label="VIP" value="vip" />
-              <el-option label="分销" value="distrib" />
               <el-option label="临时活动" value="temp" />
-              <el-option label="测试" value="test" />
-              <el-option label="赠送" value="gift" />
             </el-select>
           </el-form-item>
-          <template v-if="type==='self' || type==='vip' || type==='distrib' || type==='retail' || type==='temp'">
-            <el-form-item label="方案">
-              <el-select v-model="pricingPlanId" placeholder="选择定价方案" @change="refreshQuote" @visible-change="onPlanDropdown">
-                <el-option v-for="pl in plansByType" :key="pl.id" :label="planLabel(pl)" :value="pl.id" />
-              </el-select>
-            </el-form-item>
-          </template>
+          <el-form-item label="方案">
+            <el-select
+              v-model="pricingPlanId"
+              placeholder="可不选（用默认折扣）"
+              clearable
+              @change="refreshQuote"
+              @visible-change="onPlanDropdown"
+            >
+              <el-option v-for="pl in plansByType" :key="pl.id" :label="planLabel(pl)" :value="pl.id" />
+            </el-select>
+          </el-form-item>
           <el-button type="primary" @click="next">下一步</el-button>
         </el-form>
       </div>
@@ -82,13 +82,14 @@
               <el-option label="支付宝" value="alipay" />
               <el-option label="其他" value="other" />
             </el-select>
+            <span v-if="receivable === 0" class="hint">本次为“免费”，可不选支付方式</span>
           </el-form-item>
           <el-form-item label="备注">
             <el-input v-model="remark" placeholder="客户姓名" />
           </el-form-item>
           <div class="actions">
             <el-button @click="prev">上一步</el-button>
-            <el-button type="primary" @click="next" :disabled="!payment">下一步</el-button>
+            <el-button type="primary" @click="next" :disabled="receivable > 0 && !payment">下一步</el-button>
           </div>
         </el-form>
       </div>
@@ -147,7 +148,7 @@ let nextItemId = 1
 const items = reactive<Array<{ id:number; productId:string; qty:number; receivable:number; unitOverride?:number }>>([
   { id: nextItemId++, productId: '', qty: 1, receivable: 0, unitOverride: undefined }
 ])
-const type = ref<'self'|'retail'|'vip'|'distrib'|'temp'|'test'|'gift'>('self')
+const type = ref<'self'|'vip'|'temp'>('self')
 const person = ref('')
 const remark = ref('')
 const loading = ref(false)
@@ -180,7 +181,7 @@ async function loadPlans() {
 async function submit() {
   const valid = validItems.value
   if (!valid.length) { ElMessage.warning('请至少选择一种产品并填写数量'); return }
-  if (!payment.value) { ElMessage.warning('请选择支付方式'); return }
+  if (receivable.value > 0 && !payment.value) { ElMessage.warning('请选择支付方式'); return }
 
   // 提交前：如有成品库存不足的行，提示用户是否允许自动按配方扣原料
   const lackMessages:string[] = []
@@ -220,7 +221,7 @@ async function submit() {
         productId: row.productId,
         qty: row.qty,
         person: person.value,
-        payment: payment.value,
+        payment: payment.value || '',
         pricingGroup: pricingGroup.value,
         pricingPlanId: pricingPlanId.value,
         remark: remark.value,
@@ -269,8 +270,11 @@ function prev() { step.value = Math.max(0, step.value - 1) }
 const validItems = computed(() => items.filter(r => r.productId && r.qty > 0))
 const hasValidItem = computed(() => validItems.value.length > 0)
 const productNameOf = (id:string) => products.find(p => p.id === id)?.name || ''
-const typeLabel = computed(() => ({ self:'自用', retail:'零售', vip:'VIP', distrib:'分销', temp:'临时活动', test:'测试', gift:'赠送' } as any)[type.value])
-const paymentLabel = computed(() => ({ cash:'现金', wechat:'微信', alipay:'支付宝', other:'其他', '':'' } as any)[payment.value])
+const typeLabel = computed(() => ({ self:'自用/赠送', vip:'VIP', temp:'临时活动' } as any)[type.value])
+const paymentLabel = computed(() => {
+  if (!payment.value && receivable.value === 0) return '免收'
+  return ({ cash:'现金', wechat:'微信', alipay:'支付宝', other:'其他', '':'—' } as any)[payment.value]
+})
 const receivable = computed(() =>
   validItems.value.reduce((sum, row) => {
     const rowTotal =
@@ -283,17 +287,21 @@ const receivable = computed(() =>
 const pricingGroup = computed(() => {
   if (type.value === 'self') return 'self'
   if (type.value === 'vip') return 'vip'
-  if (type.value === 'distrib') return 'distrib'
-  if (type.value === 'retail') return 'retail'
   if (type.value === 'temp') return 'temp'
   return undefined
 })
 const plansByType = computed(() => {
-  // 兼容历史：VIP 方案可能存于 special 或 retail:VIP 名称下，服务端已在 /pricing/plans 统一映射 group='vip'
   const g = pricingGroup.value
   return plans.value.filter(p => p.group === g)
 })
-function planLabel(pl:any){ return `${pl.name}（¥${pl.setPrice}/${pl.packCount}包，¥${pl.perPackPrice}/包）` }
+function discountLabel(discount:number){
+  const d = Number(discount)
+  if (!isFinite(d)) return ''
+  if (d === 0) return '免费'
+  const z = Math.round((d * 10) * 10) / 10
+  return `${z}折`
+}
+function planLabel(pl:any){ return `${pl.name}（${discountLabel(pl.discount)}）` }
 function onTypeChange(){ pricingPlanId.value=''; loadPlans(); refreshQuote() }
 function onPlanDropdown(open:boolean){ if (open) loadPlans() }
 
@@ -338,4 +346,5 @@ onMounted(() => {
 .actions { display:flex; gap: 8px; }
 .actions.sticky { position: sticky; bottom: 0; padding: 8px 0; background: var(--qs-surface); border-top: 1px solid var(--qs-border); }
 .preview { display:flex; flex-direction: column; gap: 6px; margin: 8px 0 16px; }
+.hint { margin-left: 10px; color: var(--el-text-color-secondary); font-size: 12px; }
 </style>

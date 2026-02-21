@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import { authMiddleware, requireRole, signToken } from './auth';
 import { storage, backupManager, DATA_DIR, DB_FILE, loadDb } from './storage';
-import { Material, Order, OrderType, Product, ProductRecipeItem, Purchase, PricingPlan, PricingPlanGroup } from './types';
+import { Material, Order, OrderType, Product, ProductRecipeItem, Purchase, PricingDiscountGroup, PricingDiscountPlan } from './types';
 import { Errors } from './errors';
 import { logger } from './logger';
 import { existsSync, copyFileSync, createReadStream, writeFileSync } from 'fs';
@@ -364,26 +364,25 @@ router.patch('/pricing', authMiddleware, requireRole('owner'), (req, res) => {
   const p = storage.pricing;
   const body = req.body || {};
   const next = { ...p } as any;
-  for (const k of ['self', 'vip', 'distrib', 'event']) {
+  for (const k of ['self', 'vip', 'temp']) {
     if (body[k] !== undefined) {
       const v = Number(body[k]);
-      if (!isFinite(v) || v <= 0) return res.status(400).json(Errors.validation(`${k} 折扣需为正数`));
+      if (!isFinite(v) || v < 0) return res.status(400).json(Errors.validation(`${k} 折扣需为非负数`));
       next[k] = v;
     }
   }
-  // 可选：活动方案（plans）
+  // 折扣方案（plans）
   if (Array.isArray(body.plans)) {
-    const plans = [] as PricingPlan[];
+    const plans = [] as PricingDiscountPlan[];
     for (const it of body.plans) {
       if (!it || !it.group || !it.name) return res.status(400).json(Errors.validation('plans 不合法'));
-      const setPrice = Number(it.setPrice || 0);
-      const packCount = Number(it.packCount || 0);
-      const perPackInput = it.perPackPrice !== undefined ? Number(it.perPackPrice) : undefined;
-      if (!(setPrice >= 0) || !(packCount >= 0)) return res.status(400).json(Errors.validation('setPrice/packCount 非法'));
-      const perPackPrice = perPackInput !== undefined && perPackInput >= 0
-        ? Math.round(perPackInput)
-        : (packCount > 0 ? Number((setPrice / packCount).toFixed(0)) : 0);
-      plans.push({ id: it.id || nanoid(), group: it.group, name: it.name, setPrice, packCount, perPackPrice, remark: it.remark });
+      const group = String(it.group) as PricingDiscountGroup;
+      if (!['self', 'vip', 'temp'].includes(group)) {
+        return res.status(400).json(Errors.validation('group 非法'));
+      }
+      const discount = Number(it.discount);
+      if (!isFinite(discount) || discount < 0) return res.status(400).json(Errors.validation('discount 非法'));
+      plans.push({ id: it.id || nanoid(), group, name: String(it.name), discount, remark: it.remark ? String(it.remark) : undefined });
     }
     next.plans = plans;
   }
@@ -391,47 +390,37 @@ router.patch('/pricing', authMiddleware, requireRole('owner'), (req, res) => {
   res.json(next);
 });
 
-function discountFor(type: OrderType): number {
-  const p = storage.pricing;
-  switch (type) {
-    case 'self': return p.self;
-    case 'vip': return p.vip;
-    case 'distrib': return p.distrib;
-    case 'retail': return 1; // 零售默认不打折
-    case 'temp': return p.event; // 临时活动沿用 event 折扣
-    case 'event': return p.event; // 兼容旧值
-    case 'test': return 1; // 测试类型不参与折扣，按产品基础价结算
-    case 'gift': return 0; // 赠送类型默认价格为 0
-    default: return 1;
-  }
-}
-
 // 面向前台的只读方案列表（任何登录用户可见）
 router.get('/pricing/plans', authMiddleware, (_req, res) => {
   const plansRaw = Array.isArray(storage.pricing.plans) ? storage.pricing.plans : [];
-  // 兼容历史：将名称为 VIP 或分组为 special 的方案在读出时统一映射为 vip 分组，方便前端筛选
-  const plans = plansRaw.map(p => (p.name === 'VIP' || (p as any).group === 'special') ? ({ ...p, group: 'vip' as any }) : p);
+  // 仅输出自用/VIP/临时活动三类折扣方案
+  const plans = plansRaw
+    .filter(p => p && ['self', 'vip', 'temp'].includes(String((p as any).group)))
+    .map(p => ({ id: (p as any).id, group: (p as any).group, name: (p as any).name, discount: Number((p as any).discount), remark: (p as any).remark }));
   res.json({ plans });
 });
 
-function resolvePerPackPrice(group: PricingPlanGroup | 'vip' | undefined, planId: string | undefined): number | undefined {
-  const plans = Array.isArray(storage.pricing.plans) ? storage.pricing.plans : [];
-  // 优先依据方案 ID 精确匹配，避免分组枚举差异导致无法命中（如历史数据中的 special/retail:VIP）
+function defaultDiscountFor(group: PricingDiscountGroup | undefined, type: OrderType): number {
+  const p = storage.pricing as any;
+  // 优先用 group（取货登记显式传入）
+  const g = group || (type === 'self' ? 'self' : type === 'vip' ? 'vip' : type === 'temp' ? 'temp' : undefined);
+  if (g === 'self') return isFinite(Number(p.self)) ? Number(p.self) : 0;
+  if (g === 'vip') return Number(p.vip ?? 1) || 1;
+  if (g === 'temp') return Number(p.temp ?? 1) || 1;
+  // 兼容旧类型：没有折扣则按原价；赠送为 0
+  if (type === 'gift') return 0;
+  return 1;
+}
+
+function resolveDiscount(group: PricingDiscountGroup | undefined, planId: string | undefined, type: OrderType): number {
+  const plans = Array.isArray((storage.pricing as any).plans) ? ((storage.pricing as any).plans as any[]) : [];
   if (planId) {
-    const byId = plans.find(p => p.id === planId);
-    if (byId) {
-      const price = Number(byId.perPackPrice || 0);
-      return price >= 0 ? price : undefined;
+    const byId = plans.find(p => String(p?.id) === String(planId));
+    if (byId && isFinite(Number(byId.discount))) {
+      return Math.max(0, Number(byId.discount));
     }
   }
-  if (group) {
-    const byGroup = plans.find(p => p.group === group);
-    if (byGroup) {
-      const price = Number(byGroup.perPackPrice || 0);
-      return price >= 0 ? price : undefined;
-    }
-  }
-  return undefined;
+  return defaultDiscountFor(group, type);
 }
 
 // ===== Purchases (Inbound) =====
@@ -638,7 +627,8 @@ router.get('/orders', authMiddleware, (_req, res) => {
 });
 
 router.post('/orders', authMiddleware, (req, res) => {
-  const { type, productId, qty, person, payment, pricingGroup, pricingPlanId, remark } = req.body || {} as Partial<Order> & { pricingGroup?: PricingPlanGroup | 'vip', pricingPlanId?: string };
+  const { type, productId, qty, person, payment, pricingGroup, pricingPlanId, remark } =
+    (req.body || {}) as Partial<Order> & { pricingGroup?: PricingDiscountGroup; pricingPlanId?: string };
   const t = (type || 'retail') as OrderType;
   if (!['self', 'vip', 'distrib', 'retail', 'temp', 'event', 'test', 'gift'].includes(t)) {
     return res.status(400).json(Errors.validation('type 非法'));
@@ -665,9 +655,9 @@ router.post('/orders', authMiddleware, (req, res) => {
     }
   }
 
-  // Compute receivable: 优先使用定价方案的应收每包
-  const perPackFromPlan = resolvePerPackPrice((pricingGroup as any) || (t === 'vip' ? 'vip' : t === 'distrib' ? 'distrib' : t === 'retail' ? 'retail' : t === 'temp' ? 'temp' : t === 'self' ? 'self' : undefined), pricingPlanId);
-  const unit = perPackFromPlan !== undefined ? perPackFromPlan : Number((product.priceBase * discountFor(t)).toFixed(2));
+  // Compute receivable: 折扣方案优先，其次为默认折扣（按 group/type）
+  const discount = resolveDiscount(pricingGroup, pricingPlanId, t);
+  const unit = Number((product.priceBase * discount).toFixed(2));
   const receivable = Number((unit * q).toFixed(2));
 
   // Deduct stock and write logs
@@ -736,6 +726,7 @@ router.post('/orders', authMiddleware, (req, res) => {
     pricingPlanId,
     perPackPrice: unit,
     remark: remark ? String(remark) : undefined,
+    discountApplied: discount,
   };
   storage.addOrder(order);
   res.status(201).json({ id: order.id, receivable: order.receivable, createdAt: order.createdAt });
@@ -809,7 +800,8 @@ router.get('/products/:id/usage', authMiddleware, requireRole('owner'), (req, re
 
 // 订单预校验：返回应收与库存充足性
 router.post('/orders/validate', authMiddleware, (req, res) => {
-  const { type, productId, qty, pricingGroup, pricingPlanId } = (req.body || {}) as Partial<Order> & { pricingGroup?: PricingPlanGroup | 'vip', pricingPlanId?: string };
+  const { type, productId, qty, pricingGroup, pricingPlanId } =
+    (req.body || {}) as Partial<Order> & { pricingGroup?: PricingDiscountGroup; pricingPlanId?: string };
   const t = (type || 'retail') as OrderType;
   if (!['self', 'vip', 'distrib', 'retail', 'temp', 'event', 'test', 'gift'].includes(t)) {
     return res.status(400).json(Errors.validation('type 非法'));
@@ -832,10 +824,10 @@ router.post('/orders/validate', authMiddleware, (req, res) => {
     }
     if (lacks.length) return res.status(400).json(Errors.insufficient(lacks));
   }
-  const perPackFromPlan = resolvePerPackPrice((pricingGroup as any) || (t === 'vip' ? 'vip' : t === 'distrib' ? 'distrib' : t === 'retail' ? 'retail' : t === 'temp' ? 'temp' : t === 'self' ? 'self' : undefined), pricingPlanId);
-  const unit = perPackFromPlan !== undefined ? perPackFromPlan : Number((product.priceBase * discountFor(t)).toFixed(2));
+  const discount = resolveDiscount(pricingGroup, pricingPlanId, t);
+  const unit = Number((product.priceBase * discount).toFixed(2));
   const receivable = Number((unit * q).toFixed(2));
-  return res.json({ receivable, perPackPrice: unit, usedFinished: useFinished, usedFromRaw: needFromRaw });
+  return res.json({ receivable, perPackPrice: unit, discountApplied: discount, usedFinished: useFinished, usedFromRaw: needFromRaw });
 });
 
 // ===== Reports =====
@@ -843,7 +835,7 @@ router.get('/reports/summary', authMiddleware, (req, res) => {
   const from = req.query.from ? new Date(String(req.query.from)) : null;
   const to = req.query.to ? new Date(String(req.query.to)) : null;
   const type = req.query.type ? String(req.query.type) as OrderType : undefined;
-  const pricingGroup = req.query.pricingGroup ? String(req.query.pricingGroup) as PricingPlanGroup | 'vip' : undefined;
+  const pricingGroup = req.query.pricingGroup ? String(req.query.pricingGroup) : undefined;
   const pricingPlanId = req.query.pricingPlanId ? String(req.query.pricingPlanId) : undefined;
   const groupBy = req.query.groupBy ? String(req.query.groupBy) as 'type'|'pricingGroup'|'pricingPlan' : undefined;
   const gran = (req.query.gran || 'day') as 'day' | 'week' | 'month';
@@ -905,7 +897,7 @@ router.get('/reports/export', authMiddleware, async (req, res) => {
   const from = req.query.from ? new Date(String(req.query.from)) : null;
   const to = req.query.to ? new Date(String(req.query.to)) : null;
   const type = req.query.type ? String(req.query.type) as OrderType : undefined;
-  const pricingGroup = req.query.pricingGroup ? String(req.query.pricingGroup) as PricingPlanGroup | 'vip' : undefined;
+  const pricingGroup = req.query.pricingGroup ? String(req.query.pricingGroup) : undefined;
   const pricingPlanId = req.query.pricingPlanId ? String(req.query.pricingPlanId) : undefined;
   const orders = storage.orders.filter(o => {
     const d = new Date(o.createdAt);
@@ -960,10 +952,17 @@ router.get('/inventory/logs', authMiddleware, (req, res) => {
       if (l.refType === 'order') {
         const o = storage.orders.find(o => o.id === l.refId);
         enriched.operator = o?.person || '';
+        // 备注：来自订单备注
+        enriched.remark = o?.remark || '';
       } else if (l.refType === 'purchase') {
         const p0 = storage.purchases.find(p => p.id === l.refId);
         enriched.operator = p0?.operator || '';
       }
+    }
+    // 即使 operator 存在，也补充 remark（用于前端展示）
+    if (enriched.remark === undefined && l.refType === 'order') {
+      const o = storage.orders.find(o => o.id === l.refId);
+      enriched.remark = o?.remark || '';
     }
     // 补充名称信息，便于前端直接展示
     if (l.materialId) {
@@ -1000,7 +999,7 @@ router.get('/inventory/logs/export', authMiddleware, async (req, res) => {
   const ExcelJS = await import('exceljs');
   const wb = new (ExcelJS as any).Workbook();
   const ws = wb.addWorksheet('InventoryLogs');
-  ws.addRow(['时间', '类型', '对象', '数量', '来源', '来源ID', '操作人']);
+  ws.addRow(['时间', '类型', '对象', '数量', '操作人', '备注', '来源', '来源ID']);
 
   for (const l of rows) {
     const kindLabel = l.kind === 'in' ? '存入' : '取出';
@@ -1017,11 +1016,19 @@ router.get('/inventory/logs/export', authMiddleware, async (req, res) => {
           ? `${(l as any).packages} 包`
           : '—';
     let operator = (l as any).operator || '';
+    let remark = '';
     if (!operator) {
-      if (l.refType === 'order') operator = storage.orders.find(o => o.id === l.refId)?.person || '';
+      if (l.refType === 'order') {
+        const o = storage.orders.find(o => o.id === l.refId);
+        operator = o?.person || '';
+        remark = o?.remark || '';
+      }
       else if (l.refType === 'purchase') operator = storage.purchases.find(p => p.id === l.refId)?.operator || '';
     }
-    ws.addRow([l.createdAt, kindLabel, obj, qty, l.refType, l.refId, operator || '']);
+    if (!remark && l.refType === 'order') {
+      remark = storage.orders.find(o => o.id === l.refId)?.remark || '';
+    }
+    ws.addRow([l.createdAt, kindLabel, obj, qty, operator || '', remark || '', l.refType, l.refId]);
   }
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

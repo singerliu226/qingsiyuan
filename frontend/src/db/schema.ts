@@ -56,9 +56,10 @@ export interface Order {
   payment: 'cash' | 'wechat' | 'alipay' | 'other' | '';
   createdAt: string;
   remark?: string;
-  pricingGroup?: PricingPlanGroup | 'vip';
+  pricingGroup?: 'self' | 'vip' | 'temp';
   pricingPlanId?: string;
   perPackPrice?: number;
+  discountApplied?: number;
 }
 
 export type InventoryLogKind = 'in' | 'out';
@@ -89,9 +90,7 @@ export interface PricingPlan {
   id: string;
   group: PricingPlanGroup;
   name: string;
-  setPrice: number;
-  packCount: number;
-  perPackPrice: number;
+  discount: number;
   remark?: string;
 }
 
@@ -99,8 +98,7 @@ export interface PricingConfig {
   id: string; // 固定为 'default'，IndexedDB 主键
   self: number;
   vip: number;
-  distrib: number;
-  event: number;
+  temp: number;
   plans?: PricingPlan[];
 }
 

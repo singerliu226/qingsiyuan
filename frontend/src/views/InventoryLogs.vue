@@ -39,6 +39,16 @@
       <el-table-column label="操作人">
         <template #default="{ row }">{{ row.operator || row.person || '—' }}</template>
       </el-table-column>
+      <el-table-column label="备注">
+        <template #default="{ row }">
+          <span v-if="row.remark" class="remark">
+            <el-tooltip :content="String(row.remark)" placement="top" :show-after="200">
+              <span class="remark-text" @click.stop="openDetail(row)">{{ String(row.remark) }}</span>
+            </el-tooltip>
+          </span>
+          <span v-else>—</span>
+        </template>
+      </el-table-column>
       <el-table-column v-if="isOwner" label="操作" width="140">
         <template #default="{ row }">
           <el-button
@@ -56,6 +66,22 @@
     <div class="pager">
       <el-pagination layout="prev, pager, next" :total="total" :current-page="page" :page-size="pageSize" @current-change="onPage" />
     </div>
+
+    <el-dialog v-model="detail.visible" title="流水详情" width="520px">
+      <el-descriptions v-if="detail.row" :column="1" border>
+        <el-descriptions-item label="时间">{{ formatTime(detail.row.createdAt) }}</el-descriptions-item>
+        <el-descriptions-item label="类型">{{ detail.row.kind === 'in' ? '存入' : '取出' }}</el-descriptions-item>
+        <el-descriptions-item label="对象">{{ objectLabel(detail.row) }}</el-descriptions-item>
+        <el-descriptions-item label="数量">{{ qtyLabel(detail.row) }}</el-descriptions-item>
+        <el-descriptions-item label="操作人">{{ detail.row.operator || detail.row.person || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="备注">{{ detail.row.remark || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="来源">{{ detail.row.refType || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="来源ID">{{ detail.row.refId || '—' }}</el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button @click="detail.visible=false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -75,6 +101,7 @@ const range = ref<[Date, Date] | null>(null)
 const exporting = ref(false)
 const auth = useAuthStore()
 const isOwner = auth.user?.role === 'owner'
+const detail = reactive<{ visible: boolean; row: any | null }>({ visible: false, row: null })
 
 /**
  * 将 ISO 时间串格式化为“年-月-日 时:分:秒”形式，便于业务人员在手机上快速理解。
@@ -91,6 +118,29 @@ function formatTime(iso: string | Date): string {
   const mm = String(d.getMinutes()).padStart(2, '0')
   const ss = String(d.getSeconds()).padStart(2, '0')
   return `${y}-${m}-${day} ${hh}:${mm}:${ss}`
+}
+
+function objectLabel(row: any): string {
+  if (!row) return '—'
+  if (row.materialId) return `原料 - ${row.materialName || row.materialId}`
+  if (row.productId) return `成品 - ${row.productName || row.productId}`
+  return '—'
+}
+
+function qtyLabel(row: any): string {
+  if (!row) return '—'
+  if (row.grams !== undefined && row.grams !== null) return `${row.grams} 克`
+  if (row.packages !== undefined && row.packages !== null) return `${row.packages} 包`
+  return '—'
+}
+
+/**
+ * 打开单条流水的详情弹窗。
+ * 说明：库存流水表格字段较多且备注可能较长，因此用弹窗承载“完整表单”，避免表格过宽难读。
+ */
+function openDetail(row: any) {
+  detail.row = row
+  detail.visible = true
 }
 
 async function load() {
@@ -176,6 +226,16 @@ load()
 .top { display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px; gap: 8px; }
 .actions { display:flex; align-items:center; gap: 8px; }
 .pager { display:flex; justify-content:flex-end; margin-top: 8px; }
+.remark { display:block; }
+.remark-text {
+  display: inline-block;
+  max-width: 260px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  color: var(--el-color-primary);
+}
 </style>
 
 

@@ -25,7 +25,7 @@ export async function logs(params: {
   to?: string;
   page?: string | number;
   pageSize?: string | number;
-}): Promise<{ total: number; page: number; pageSize: number; data: Array<InventoryLog & { materialName?: string; productName?: string }> }> {
+}): Promise<{ total: number; page: number; pageSize: number; data: Array<InventoryLog & { materialName?: string; productName?: string; remark?: string }> }> {
   let rows = await db.inventoryLogs.toArray();
 
   // 筛选
@@ -58,16 +58,22 @@ export async function logs(params: {
   const prodMap = new Map(allProducts.map(p => [p.id, p.name]));
 
   const data = slice.map(l => {
-    const enriched: InventoryLog & { materialName?: string; productName?: string } = { ...l };
+    const enriched: InventoryLog & { materialName?: string; productName?: string; remark?: string } = { ...l };
     // 兼容旧数据：补充缺失的 operator 信息
     if (!enriched.operator) {
       if (l.refType === 'order') {
         const o = allOrders.find(o => o.id === l.refId);
         enriched.operator = o?.person || '';
+        enriched.remark = o?.remark || '';
       } else if (l.refType === 'purchase') {
         const p0 = allPurchases.find(p => p.id === l.refId);
         enriched.operator = p0?.operator || '';
       }
+    }
+    // 即使 operator 存在，也补充 remark（用于前端展示）
+    if (enriched.remark === undefined && l.refType === 'order') {
+      const o = allOrders.find(o => o.id === l.refId);
+      enriched.remark = o?.remark || '';
     }
     if (l.materialId) enriched.materialName = matMap.get(l.materialId) || '';
     if (l.productId) (enriched as any).productName = prodMap.get(l.productId) || ''; // eslint-disable-line @typescript-eslint/no-explicit-any

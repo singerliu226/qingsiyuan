@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
 import { storage } from './storage';
-import type { Material, Product, ProductRecipeItem, PricingPlan } from './types';
+import type { Material, Product, ProductRecipeItem, PricingConfig } from './types';
 
 /**
  * 初始化/对齐业务数据（材料与产品+配方）。
@@ -50,33 +50,21 @@ export function ensureCatalogSeed(): void {
 
 
 /**
- * 初始化开业活动定价方案（当 pricing.plans 为空时）。
- * 方案来源：历史版本的“开业暂定价目表”（现已改为“可自由配置的定价方案”）。
+ * 初始化定价配置的基础字段（幂等）。
+ *
+ * 设计说明：
+ * - 当前版本不再注入任何“默认方案”，避免把定价复杂度强加给使用者；
+ * - 仅保证 self/vip/temp 三个折扣字段与 plans 数组存在，方便前端直接编辑。
  */
 export function ensurePricingSeed(): void {
   const p = storage.pricing as any;
-  const hasPlans = Array.isArray(p?.plans) && p.plans.length > 0;
-  const plansExisting: PricingPlan[] = hasPlans ? (p.plans as PricingPlan[]) : [];
-  const plans: PricingPlan[] = [
-    // 说明：自 v0.1.0 起，默认不再内置“开业活动方案”。
-    // 原因：不同门店/时期的营销策略差异大，内置固定方案反而限制灵活配置；
-    // 操作者可在“定价策略”页自由新增/修改/删除方案。
-  ];
-
-  // 迁移：如果历史数据中存在“开业一次性活动”方案，则自动移除。
-  // 仅针对明确的 name 精确匹配，避免误删用户自定义方案。
-  if (hasPlans) {
-    const removed = plansExisting.filter(pl => String(pl.name) === '一次性活动');
-    if (removed.length) {
-      const next = { ...p, plans: plansExisting.filter(pl => String(pl.name) !== '一次性活动') } as any;
-      storage.setPricing(next);
-    }
-    // 若已存在方案，不进行覆盖
-    return;
-  }
-
-  // 新安装：默认不注入任何方案，保持空列表。
-  const next = { ...p, plans: [] } as any;
+  const next: PricingConfig = {
+    // “自用/赠送”默认免费：缺省为 0，门店如需收费可在 UI 中修改
+    self: isFinite(Number(p?.self)) ? Number(p.self) : 0,
+    vip: isFinite(Number(p?.vip)) ? Number(p.vip) : 0.8,
+    temp: isFinite(Number(p?.temp)) ? Number(p.temp) : 1,
+    plans: Array.isArray(p?.plans) ? p.plans : [],
+  };
   storage.setPricing(next);
 }
 

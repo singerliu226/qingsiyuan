@@ -70,9 +70,14 @@ export interface Order {
    */
   remark?: string;
   // 定价策略（可选，便于追溯）
-  pricingGroup?: PricingPlanGroup | 'vip';
+  pricingGroup?: PricingDiscountGroup;
   pricingPlanId?: string;
   perPackPrice?: number;
+  /**
+   * 本单使用的折扣值（可选，便于审计与排查“为何这个单价是这样算的”）。
+   * 例如：0.8 = 8 折；1 = 原价。
+   */
+  discountApplied?: number;
 }
 
 export type InventoryLogKind = 'in' | 'out';
@@ -129,19 +134,30 @@ export interface Purchase {
 export interface PricingConfig {
   self: number;
   vip: number;
-  distrib: number;
-  event: number;
-  plans?: PricingPlan[];
+  temp: number;
+  plans?: PricingDiscountPlan[];
 }
 
-export type PricingPlanGroup = 'self' | 'distrib' | 'retail' | 'vip' | 'temp' | 'special';
+/**
+ * 折扣方案分组。
+ * 说明：按产品出库“取货类型”划分，仅保留自用/VIP/临时活动三类，便于非技术用户理解与配置。
+ */
+export type PricingDiscountGroup = 'self' | 'vip' | 'temp';
 
-export interface PricingPlan {
+/**
+ * 折扣方案。
+ * 设计说明：
+ * - 仅存储折扣数字（例如 0.8 表示 8 折），避免套装价/包数/单包价带来的复杂度；
+ * - 取货登记按「产品基础价 × 折扣」计算应收，每单可追溯选用的方案。
+ */
+export interface PricingDiscountPlan {
   id: string;
-  group: PricingPlanGroup; // 分销/零售/临时活动
-  name: string; // 分销一/零售二/临时活动三 等
-  setPrice: number; // 套装价格
-  packCount: number; // 套装内包数
-  perPackPrice: number; // 应收每包，服务端冗余存储，保存时计算
+  group: PricingDiscountGroup;
+  name: string;
+  /**
+   * 折扣值（建议 0~1；允许 >1 用于“加价”场景，但 UI 会引导常用折扣）。
+   * 例如：0.8 = 8 折；1 = 原价。
+   */
+  discount: number;
   remark?: string;
 }

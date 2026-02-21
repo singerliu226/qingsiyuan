@@ -23,22 +23,8 @@ const defaultDb: DbShape = {
   orders: [],
   purchases: [],
   inventoryLogs: [],
-  pricing: { self: 1, vip: 0.8, distrib: 0.7, event: 1, plans: [
-    // 自用（固定每包 80 元，按 15/30 次打包示例）
-    { id: 'plan-self-15', group: 'self', name: '自用15次', setPrice: 1200, packCount: 15, perPackPrice: 80, remark: '自用固定¥80/包' },
-    { id: 'plan-self-30', group: 'self', name: '自用30次', setPrice: 2400, packCount: 30, perPackPrice: 80, remark: '自用固定¥80/包' },
-    // 分销（三档）
-    { id: 'plan-distrib-1', group: 'distrib', name: '分销一', setPrice: 14280, packCount: 45, perPackPrice: 317, remark: '首次拿货3×15次疗程套装' },
-    { id: 'plan-distrib-2', group: 'distrib', name: '分销二', setPrice: 20400, packCount: 75, perPackPrice: 272, remark: '拿货5×15次疗程套装' },
-    { id: 'plan-distrib-3', group: 'distrib', name: '分销三', setPrice: 102000, packCount: 450, perPackPrice: 227, remark: '拿货30×15次疗程套装' },
-    // 零售（两档）
-    { id: 'plan-retail-1', group: 'retail', name: '零售一', setPrice: 6800, packCount: 15, perPackPrice: 453, remark: '15次疗程套装' },
-    { id: 'plan-retail-2', group: 'retail', name: '零售二', setPrice: 12300, packCount: 30, perPackPrice: 410, remark: '30次疗程套装' },
-    // 临时活动（三档）
-    { id: 'plan-temp-1', group: 'temp', name: '临时活动一', setPrice: 999, packCount: 3, perPackPrice: 333, remark: '开业活动 999 元 3 次疗程' },
-    { id: 'plan-temp-2', group: 'temp', name: '临时活动二', setPrice: 5780, packCount: 15, perPackPrice: 385, remark: '好友推荐 8.5 折' },
-    { id: 'plan-temp-3', group: 'temp', name: '临时活动三', setPrice: 1088, packCount: 3, perPackPrice: 363, remark: '3 次体验 8 折优惠券' },
-  ] },
+  // 定价策略：默认仅保留三类折扣 + 空方案列表，用户在 UI 中自行创建折扣方案
+  pricing: { self: 0, vip: 0.8, temp: 1, plans: [] },
 };
 
 let db: DbShape = defaultDb;
@@ -52,6 +38,31 @@ export function loadDb(): void {
   }
   const raw = readFileSync(DB_FILE, 'utf-8');
   db = JSON.parse(raw) as DbShape;
+
+  // ===== 轻量迁移：将旧定价结构清理为“折扣方案”模型 =====
+  // 目标：按“清空重做”策略，避免旧的套装/单包价方案继续影响取货计算或导致前端解析困难。
+  try {
+    const p: any = (db as any).pricing || {};
+    const hasLegacyFields = p && (p.distrib !== undefined || p.event !== undefined);
+    const plans = Array.isArray(p?.plans) ? p.plans : [];
+    const hasLegacyPlanShape = plans.some((it: any) => it && (it.perPackPrice !== undefined || it.setPrice !== undefined || it.packCount !== undefined));
+    const hasNewShape = plans.some((it: any) => it && it.discount !== undefined);
+    if (hasLegacyFields || hasLegacyPlanShape || (!hasNewShape && plans.length > 0)) {
+      const next: PricingConfig = {
+        // “自用/赠送”默认免费：迁移到新结构时将 self 设为 0（使用者如需收费可在 UI 中修改）
+        self: 0,
+        vip: isFinite(Number(p.vip)) ? Number(p.vip) : 0.8,
+        // 旧结构的 event 折扣映射到 temp；无则为 1
+        temp: isFinite(Number(p.temp)) ? Number(p.temp) : (isFinite(Number(p.event)) ? Number(p.event) : 1),
+        // 清空方案列表（清空重做）
+        plans: [],
+      };
+      (db as any).pricing = next;
+      saveDb();
+    }
+  } catch {
+    // 忽略迁移异常：避免因坏数据导致服务无法启动
+  }
 }
 
 export function saveDb(): void {
