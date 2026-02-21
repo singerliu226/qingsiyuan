@@ -979,6 +979,193 @@ router.get('/inventory/logs', authMiddleware, (req, res) => {
   res.json({ total, page: p, pageSize: ps, data });
 });
 
+/**
+ * 导出库存流水（XLSX）。
+ * 说明：
+ * - 使用与 /inventory/logs 相同的筛选条件，但导出为全量数据（不分页）；
+ * - 仅导出展示字段（时间、类型、对象、数量、来源、操作人），便于门店留档。
+ */
+router.get('/inventory/logs/export', authMiddleware, async (req, res) => {
+  const { kind, materialId, refType, from, to } = req.query as any;
+  let rows = storage.inventoryLogs.slice();
+  if (kind) rows = rows.filter(l => l.kind === String(kind));
+  if (materialId) rows = rows.filter(l => l.materialId === String(materialId));
+  if (refType) rows = rows.filter(l => l.refType === String(refType));
+  const fromD = from ? new Date(String(from)) : null;
+  const toD = to ? new Date(String(to)) : null;
+  if (fromD) rows = rows.filter(l => new Date(l.createdAt) >= fromD);
+  if (toD) rows = rows.filter(l => new Date(l.createdAt) <= toD);
+  rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+
+  const ExcelJS = await import('exceljs');
+  const wb = new (ExcelJS as any).Workbook();
+  const ws = wb.addWorksheet('InventoryLogs');
+  ws.addRow(['时间', '类型', '对象', '数量', '来源', '来源ID', '操作人']);
+
+  for (const l of rows) {
+    const kindLabel = l.kind === 'in' ? '存入' : '取出';
+    const obj =
+      l.materialId
+        ? `原料 - ${storage.materials.find(m => m.id === l.materialId)?.name || l.materialId}`
+        : (l as any).productId
+          ? `成品 - ${storage.products.find(p => p.id === (l as any).productId)?.name || (l as any).productId}`
+          : '—';
+    const qty =
+      l.grams !== undefined && l.grams !== null
+        ? `${l.grams} 克`
+        : (l as any).packages !== undefined && (l as any).packages !== null
+          ? `${(l as any).packages} 包`
+          : '—';
+    let operator = (l as any).operator || '';
+    if (!operator) {
+      if (l.refType === 'order') operator = storage.orders.find(o => o.id === l.refId)?.person || '';
+      else if (l.refType === 'purchase') operator = storage.purchases.find(p => p.id === l.refId)?.operator || '';
+    }
+    ws.addRow([l.createdAt, kindLabel, obj, qty, l.refType, l.refId, operator || '']);
+  }
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="inventory-logs.xlsx"');
+  await wb.xlsx.write(res as any);
+  return res.end();
+});
+
+/**
+ * 撤回一条库存流水（仅店长）。
+ *
+ * 设计说明：
+ * - 流水是审计记录，不做“删除”；撤回采用“对冲”方式写入一条相反方向的 adjust 流水；
+ * - 对于 purchase / order：
+ *   - 需要同时撤回业务记录，保证报表统计一致；
+ *   - purchase → 等价于撤回进货（会删除 purchases 记录并写对冲流水）；
+ *   - order → 等价于撤销订单（仅支持 5 分钟内）。
+ * - 对于 produce / adjust：
+ *   - 仅对库存字段做对冲（不涉及额外业务表），写入 adjust 对冲流水即可。
+ */
+router.post('/inventory/logs/:id/revoke', authMiddleware, requireRole('owner'), (req, res) => {
+  const id = String(req.params.id || '');
+  const operator = String((req as any).user?.name || '');
+  if (!id) return res.status(400).json(Errors.validation('id 非法'));
+
+  const log0: any = storage.inventoryLogs.find(l => (l as any).id === id);
+  if (!log0) return res.status(404).json(Errors.notFound('流水不存在'));
+
+  // purchase / order：走专用撤回逻辑，保证业务一致性
+  if (log0.refType === 'purchase') {
+    // 仅支持撤回“进货入库”对应的 purchase 业务记录
+    const purchaseId = String(log0.refId || '');
+    if (!purchaseId) return res.status(400).json(Errors.validation('purchaseId 非法'));
+    // 复用既有撤回接口逻辑：通过内部查找 purchase 再回滚库存/删除记录/写流水
+    const purchase = storage.purchases.find(p => p.id === purchaseId);
+    if (!purchase) return res.status(404).json(Errors.notFound('进货记录不存在'));
+    const mat = storage.materials.find(m => m.id === purchase.materialId);
+    if (!mat) return res.status(404).json(Errors.notFound('原料不存在'));
+    const grams = Number(purchase.grams || 0);
+    if (!(grams > 0)) return res.status(400).json(Errors.validation('进货记录 grams 非法'));
+    if (mat.stock < grams) {
+      return res.status(400).json(
+        Errors.validation('当前库存不足，无法撤回该进货记录（可能已被消耗）', { materialId: mat.id, need: grams, stock: mat.stock }),
+      );
+    }
+    mat.stock -= grams;
+    storage.upsertMaterial(mat);
+    storage.removePurchase(purchaseId);
+    storage.addInventoryLog({
+      id: nanoid(),
+      kind: 'out',
+      materialId: mat.id,
+      grams,
+      refType: 'adjust',
+      refId: `revoke-purchase-${purchaseId}`,
+      operator,
+      createdAt: nowIso(),
+    });
+    logger.warn('purchase:revoke', { purchaseId, materialId: mat.id, grams, operator, stockAfter: mat.stock });
+    return res.json({ ok: true, mode: 'purchase', purchaseId });
+  }
+
+  if (log0.refType === 'order') {
+    const orderId = String(log0.refId || '');
+    if (!orderId) return res.status(400).json(Errors.validation('orderId 非法'));
+    const order = storage.orders.find(o => o.id === orderId);
+    if (!order) return res.status(404).json(Errors.notFound('订单不存在'));
+    const created = new Date(order.createdAt).getTime();
+    if (Date.now() - created > 5 * 60 * 1000) return res.status(400).json(Errors.validation('撤销窗口已过期'));
+    const product = storage.products.find(p => p.id === order.productId);
+    if (!product) return res.status(400).json(Errors.notFound('产品不存在'));
+    const usedFinished = order.usedFinished || 0;
+    const usedRaw = order.qty - usedFinished;
+    // 回滚成品库存
+    if (usedFinished > 0) {
+      (product as any).stock = Number((product as any).stock || 0) + usedFinished;
+      storage.upsertProduct(product);
+      storage.addInventoryLog({ id: nanoid(), kind: 'in', productId: product.id, packages: usedFinished, refType: 'order', refId: order.id, operator, createdAt: nowIso() });
+    }
+    // 回滚原料库存
+    if (usedRaw > 0) {
+      for (const item of product.recipe) {
+        const mat = storage.materials.find(m => m.id === item.materialId);
+        if (!mat) return res.status(400).json(Errors.notFound(`原料不存在: ${item.materialId}`));
+        const grams = item.grams * usedRaw;
+        mat.stock += grams;
+        storage.upsertMaterial(mat);
+        storage.addInventoryLog({ id: nanoid(), kind: 'in', materialId: mat.id, grams, refType: 'order', refId: order.id, operator, createdAt: nowIso() });
+      }
+    }
+    storage.removeOrder(order.id);
+    logger.warn('order:cancel', { orderId, operator });
+    return res.json({ ok: true, mode: 'order', orderId });
+  }
+
+  // 通用对冲：produce / adjust 等
+  const marker = `revoke-log-${id}`;
+  const already = storage.inventoryLogs.find(l => l.refType === 'adjust' && l.refId === marker);
+  if (already) return res.status(400).json(Errors.validation('该流水已撤回'));
+
+  const kindOpp = log0.kind === 'in' ? 'out' : 'in';
+
+  // 原料流水
+  if (log0.materialId && log0.grams !== undefined && log0.grams !== null) {
+    const mat = storage.materials.find(m => m.id === log0.materialId);
+    if (!mat) return res.status(404).json(Errors.notFound('原料不存在'));
+    const grams = Number(log0.grams || 0);
+    if (!(grams > 0)) return res.status(400).json(Errors.validation('grams 非法'));
+    if (log0.kind === 'in') {
+      // 撤回入库：需要扣减库存
+      if (mat.stock < grams) return res.status(400).json(Errors.validation('当前库存不足，无法撤回该入库记录'));
+      mat.stock -= grams;
+    } else {
+      // 撤回出库：补回库存
+      mat.stock += grams;
+    }
+    storage.upsertMaterial(mat);
+    storage.addInventoryLog({ id: nanoid(), kind: kindOpp, materialId: mat.id, grams, refType: 'adjust', refId: marker, operator, createdAt: nowIso() });
+    logger.warn('inventory-log:revoke', { logId: id, mode: 'material', kind: log0.kind, grams, materialId: mat.id, operator });
+    return res.json({ ok: true });
+  }
+
+  // 成品流水
+  if (log0.productId && log0.packages !== undefined && log0.packages !== null) {
+    const prod = storage.products.find(p => p.id === log0.productId);
+    if (!prod) return res.status(404).json(Errors.notFound('成品不存在'));
+    const packages = Number(log0.packages || 0);
+    if (!(packages > 0)) return res.status(400).json(Errors.validation('packages 非法'));
+    const current = Number((prod as any).stock || 0);
+    if (log0.kind === 'in') {
+      if (current < packages) return res.status(400).json(Errors.validation('当前成品库存不足，无法撤回该入库记录'));
+      (prod as any).stock = current - packages;
+    } else {
+      (prod as any).stock = current + packages;
+    }
+    storage.upsertProduct(prod);
+    storage.addInventoryLog({ id: nanoid(), kind: kindOpp, productId: prod.id, packages, refType: 'adjust', refId: marker, operator, createdAt: nowIso() });
+    logger.warn('inventory-log:revoke', { logId: id, mode: 'product', kind: log0.kind, packages, productId: prod.id, operator });
+    return res.json({ ok: true });
+  }
+
+  return res.status(400).json(Errors.validation('该流水不支持撤回'));
+});
+
 // ===== Backup & Restore (owner only) =====
 router.post('/admin/backup', authMiddleware, requireRole('owner'), (_req, res) => {
   const src = DB_FILE;

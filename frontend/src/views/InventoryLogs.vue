@@ -10,6 +10,7 @@
         </el-select>
         <el-date-picker v-model="range" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" />
         <el-button @click="load">查询</el-button>
+        <el-button type="primary" @click="exportXlsx" :loading="exporting">导出XLSX</el-button>
       </div>
     </div>
     <el-table :data="rows" size="small">
@@ -41,12 +42,12 @@
       <el-table-column v-if="isOwner" label="操作" width="140">
         <template #default="{ row }">
           <el-button
-            v-if="canRevokePurchase(row)"
+            v-if="canRevoke(row)"
             size="small"
             type="danger"
-            @click="revokePurchase(row)"
+            @click="revoke(row)"
           >
-            撤回进货
+            撤回
           </el-button>
           <span v-else>—</span>
         </template>
@@ -71,6 +72,7 @@ const pageSize = ref(20)
 const kind = ref('')
 const materialId = ref('')
 const range = ref<[Date, Date] | null>(null)
+const exporting = ref(false)
 const auth = useAuthStore()
 const isOwner = auth.user?.role === 'owner'
 
@@ -103,31 +105,66 @@ async function load() {
 
 function onPage(p:number) { page.value = p; load() }
 
-/**
- * 是否允许在流水中撤回“进货入库”。
- * 策略：
- * - 仅允许撤回 refType='purchase' 且 kind='in' 的流水；
- * - 需要后端校验库存是否足够回滚（若已消耗则拒绝撤回）。
- */
-function canRevokePurchase(row:any): boolean {
-  return !!(row && row.refType === 'purchase' && row.kind === 'in' && row.refId && row.materialId && row.grams)
+function canRevoke(row:any): boolean {
+  return !!(row && row.id && row.refType && row.refId)
 }
 
-async function revokePurchase(row:any) {
-  if (!canRevokePurchase(row)) return
+function revokeTitle(row:any): string {
+  if (row.refType === 'purchase') return '撤回进货'
+  if (row.refType === 'order') return '撤销订单'
+  return '撤回流水'
+}
+
+function revokeHint(row:any): string {
+  if (row.refType === 'purchase') {
+    return '将回滚该笔进货的库存，并从进货记录中删除（报表成本也会同步修正）。'
+  }
+  if (row.refType === 'order') {
+    return '将撤销该笔订单并回滚库存（仅支持 5 分钟内）。'
+  }
+  return '将写入一条对冲流水并回滚对应库存（不删除原流水，便于审计）。'
+}
+
+async function revoke(row:any) {
+  if (!canRevoke(row)) return
   const ok = await ElMessageBox.confirm(
-    `确认撤回该条进货入库？\n\n注意：若该原料库存已被消耗导致当前库存不足，系统将拒绝撤回。`,
-    '撤回进货',
+    `确认${revokeTitle(row)}？\n\n${revokeHint(row)}\n\n删除/撤回后不可恢复，请谨慎操作。`,
+    revokeTitle(row),
     { type: 'warning', confirmButtonText: '确认撤回', cancelButtonText: '取消' },
   ).then(() => true).catch(() => false)
   if (!ok) return
   try {
-    await api.post(`/purchases/${row.refId}/revoke`)
-    ElMessage.success('已撤回进货并回滚库存')
+    await api.post(`/inventory/logs/${row.id}/revoke`)
+    ElMessage.success('已撤回')
     await load()
   } catch (e:any) {
     const msg = e?.response?.data?.error?.message || e?.message || '撤回失败'
     ElMessage.error(msg)
+  }
+}
+
+async function exportXlsx() {
+  exporting.value = true
+  try {
+    const params:any = {}
+    if (kind.value) params.kind = kind.value
+    if (materialId.value) params.materialId = materialId.value
+    if (range.value) { params.from = range.value[0].toISOString(); params.to = range.value[1].toISOString() }
+    const resp = await api.get('/inventory/logs/export', { params, responseType: 'blob' })
+    const blob = resp.data as Blob
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `inventory-logs.${new Date().toISOString().slice(0,10)}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    URL.revokeObjectURL(url)
+    a.remove()
+  } catch (e:any) {
+    const msg = e?.response?.data?.error?.message || e?.message || '导出失败'
+    ElMessage.error(msg)
+  } finally {
+    exporting.value = false
   }
 }
 

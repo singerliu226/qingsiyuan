@@ -6,6 +6,8 @@
 import { db } from '../db/schema';
 import type { InventoryLog } from '../db/schema';
 import { uid, makeError } from './auth-service';
+import * as purchaseService from './purchase-service';
+import * as orderService from './order-service';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -73,6 +75,94 @@ export async function logs(params: {
   });
 
   return { total, page: p, pageSize: ps, data };
+}
+
+/**
+ * 撤回一条库存流水（离线模式）。
+ *
+ * 设计说明：
+ * - 与服务端 /inventory/logs/:id/revoke 行为对齐：
+ *   - purchase：撤回进货（回滚库存 + 删除 purchases + 写对冲流水）
+ *   - order：撤销订单（仅 5 分钟内）
+ *   - produce/adjust：写对冲流水并同步回滚库存字段
+ * - 防重复：使用 refType='adjust' 且 refId='revoke-log-<id>' 作为撤回标记。
+ */
+export async function revokeLog(logId: string, operatorName: string): Promise<{ ok: true }> {
+  if (!logId) throw makeError(400, 'VALIDATION', 'id 非法');
+  const log = await db.inventoryLogs.get(logId);
+  if (!log) throw makeError(404, 'NOT_FOUND', '流水不存在');
+
+  // purchase / order：走专用撤回逻辑，保证业务一致性
+  if (log.refType === 'purchase') {
+    await purchaseService.revoke(String(log.refId || ''), operatorName || '');
+    return { ok: true };
+  }
+  if (log.refType === 'order') {
+    await orderService.cancel(String(log.refId || ''));
+    return { ok: true };
+  }
+
+  const marker = `revoke-log-${logId}`;
+  const dup = await db.inventoryLogs.where('refId').equals(marker).first();
+  if (dup) throw makeError(400, 'VALIDATION', '该流水已撤回');
+
+  const kindOpp = log.kind === 'in' ? 'out' : 'in';
+
+  // 原料流水
+  if (log.materialId && (log as any).grams !== undefined && (log as any).grams !== null) {
+    const grams = Number((log as any).grams || 0);
+    if (!(grams > 0)) throw makeError(400, 'VALIDATION', 'grams 非法');
+    const mat = await db.materials.get(log.materialId);
+    if (!mat) throw makeError(404, 'NOT_FOUND', '原料不存在');
+    if (log.kind === 'in') {
+      if (mat.stock < grams) throw makeError(400, 'VALIDATION', '当前库存不足，无法撤回该入库记录');
+      mat.stock -= grams;
+    } else {
+      mat.stock += grams;
+    }
+    await db.materials.put(mat);
+    await db.inventoryLogs.add({
+      id: uid(),
+      kind: kindOpp,
+      materialId: mat.id,
+      grams,
+      refType: 'adjust',
+      refId: marker,
+      operator: operatorName || '',
+      createdAt: nowIso(),
+    } as any);
+    return { ok: true };
+  }
+
+  // 成品流水
+  if ((log as any).productId && (log as any).packages !== undefined && (log as any).packages !== null) {
+    const productId = String((log as any).productId);
+    const packages = Number((log as any).packages || 0);
+    if (!(packages > 0)) throw makeError(400, 'VALIDATION', 'packages 非法');
+    const prod = await db.products.get(productId);
+    if (!prod) throw makeError(404, 'NOT_FOUND', '成品不存在');
+    const current = Number(prod.stock || 0);
+    if (log.kind === 'in') {
+      if (current < packages) throw makeError(400, 'VALIDATION', '当前成品库存不足，无法撤回该入库记录');
+      prod.stock = current - packages;
+    } else {
+      prod.stock = current + packages;
+    }
+    await db.products.put(prod);
+    await db.inventoryLogs.add({
+      id: uid(),
+      kind: kindOpp,
+      productId: prod.id,
+      packages,
+      refType: 'adjust',
+      refId: marker,
+      operator: operatorName || '',
+      createdAt: nowIso(),
+    } as any);
+    return { ok: true };
+  }
+
+  throw makeError(400, 'VALIDATION', '该流水不支持撤回');
 }
 
 /**

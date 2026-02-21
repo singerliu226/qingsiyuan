@@ -85,6 +85,11 @@ async function handleGet(url: string, config?: AdapterConfig): Promise<unknown> 
   // Inventory logs
   if (url === '/inventory/logs') return inventoryService.logs(params as Record<string, string>);
 
+  // Inventory logs export（离线模式暂不支持 xlsx）
+  if (url === '/inventory/logs/export') {
+    throw makeAdapterError(400, 'VALIDATION', '离线模式暂不支持 xlsx 导出，请连接后端再导出');
+  }
+
   // Reports
   if (url === '/reports/summary') return reportService.summary(params as Record<string, string>);
 
@@ -180,6 +185,15 @@ async function handlePost(url: string, data?: unknown): Promise<unknown> {
   if (m) {
     const session = authService.getSession();
     return purchaseService.revoke(m[1]!, session?.name || '');
+  }
+
+  // Inventory log revoke
+  m = matchUrl(url, /^\/inventory\/logs\/(.+)\/revoke$/);
+  if (m) {
+    const session = authService.getSession();
+    if (!session) throw makeAdapterError(401, 'UNAUTH', 'Missing token');
+    await inventoryService.revokeLog(m[1]!, session?.name || '');
+    return { ok: true };
   }
 
   // Inventory produce
